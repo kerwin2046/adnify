@@ -13,7 +13,12 @@
 7. **类型安全** - 禁止 any，完整类型定义
 
 **代码审查清单（每个任务完成前检查）：**
-- [ ] 无 any 类型
+- [x] 无 any 类型
+
+
+
+
+
 - [ ] useEffect 有清理函数
 - [ ] 使用 React.memo 优化
 - [ ] 异步有错误处理
@@ -23,23 +28,37 @@
 
 ## Phase 1: 核心 AI 能力
 
-- [ ] 1. 代码补全服务
-  - [ ] 1.1 创建 CompletionService 基础架构
+- [-] 1. 代码补全服务
+
+
+
+  - [x] 1.1 创建 CompletionService 基础架构
+
+
     - 创建 `src/renderer/services/completionService.ts`
     - 定义 CompletionContext、CompletionResult、CompletionSuggestion 接口
     - 实现 debounce 机制和请求取消
     - _Requirements: 1.1, 1.4_
-  - [ ] 1.2 编写 CompletionService 属性测试
+
+  - [x] 1.2 编写 CompletionService 属性测试
+
     - **Property 3: Context includes required fields**
     - **Validates: Requirements 1.5**
+
+
   - [ ] 1.3 实现上下文收集逻辑
     - 收集当前文件内容、光标位置
     - 分析 import/require 获取相关文件
+
+
     - 获取最近编辑的文件列表
     - _Requirements: 1.5_
-  - [ ] 1.4 实现 Ghost Text Widget
+  - [x] 1.4 实现 Ghost Text Widget
+
+
     - 创建 Monaco IContentWidget 实现
     - 实现 show/hide/accept 方法
+
     - 添加样式（半透明、斜体）
     - _Requirements: 1.1, 1.6_
   - [ ] 1.5 编写 Ghost Text 属性测试
@@ -47,11 +66,14 @@
     - **Property 2: Escape dismisses suggestion**
     - **Validates: Requirements 1.2, 1.3**
   - [ ] 1.6 集成到 Editor 组件
+
+
     - 添加键盘事件监听（Tab、Escape）
     - 实现自动触发逻辑
     - 添加 Ctrl+Space 手动触发
     - _Requirements: 1.2, 1.3_
-  - [ ] 1.7 添加补全设置选项
+  - [-] 1.7 添加补全设置选项
+
     - 在 SettingsModal 添加补全开关
     - 添加 debounce 时间配置
     - 添加 maxTokens 配置

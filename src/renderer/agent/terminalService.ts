@@ -116,9 +116,10 @@ class TerminalService {
 					isComplete: false,
 				}
 			}
-		} catch (error: any) {
+		} catch (error: unknown) {
 			terminal.isRunning = false
-			this.appendOutput(terminalId, `Error: ${error.message}\n`)
+			const err = error as { message?: string }
+			this.appendOutput(terminalId, `Error: ${err.message}\n`)
 			throw error
 		}
 	}

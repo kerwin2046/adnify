@@ -63,8 +63,9 @@ export default function InlineEdit({
 				setError(result.error || 'Failed to generate code')
 				setState('error')
 			}
-		} catch (err: any) {
-			setError(err.message || 'An error occurred')
+		} catch (err: unknown) {
+			const error = err as { message?: string }
+			setError(error.message || 'An error occurred')
 			setState('error')
 		}
 	}, [instruction, state, selectedCode, filePath, lineRange, llmConfig])
@@ -211,11 +212,18 @@ User instruction: ${instruction}
 Respond with ONLY the modified code, no explanations or markdown formatting. The code should be ready to replace the original selection.`
 }
 
+interface LLMConfigForEdit {
+	provider: string
+	model: string
+	apiKey: string
+	baseUrl?: string
+}
+
 /**
  * 调用 LLM 生成编辑
  */
 async function generateEdit(
-	config: any,
+	config: LLMConfigForEdit,
 	prompt: string
 ): Promise<{ success: boolean; code?: string; error?: string }> {
 	return new Promise((resolve) => {

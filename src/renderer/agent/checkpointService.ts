@@ -114,8 +114,9 @@ class CheckpointService {
 				} else {
 					errors.push(`Failed to restore: ${path}`)
 				}
-			} catch (e: any) {
-				errors.push(`Error restoring ${path}: ${e.message}`)
+			} catch (e: unknown) {
+				const err = e as { message?: string }
+				errors.push(`Error restoring ${path}: ${err.message}`)
 			}
 		}
 

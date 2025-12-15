@@ -3,12 +3,12 @@
  * 支持多 Provider、自定义模型、编辑器设置等
  */
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   X, Cpu, Check, Eye, EyeOff, Terminal,
   FileEdit, AlertTriangle, Settings2, Code, Keyboard
 } from 'lucide-react'
-import { useStore } from '../store'
+import { useStore, LLMConfig } from '../store'
 import { t, Language } from '../i18n'
 import { BUILTIN_PROVIDERS, BuiltinProviderName } from '../types/provider'
 
@@ -51,6 +51,10 @@ export default function SettingsModal() {
     formatOnSave: true,
     autoSave: 'off' as 'off' | 'afterDelay' | 'onFocusChange',
     theme: 'vs-dark',
+    // AI 代码补全设置
+    completionEnabled: true,
+    completionDebounceMs: 150,
+    completionMaxTokens: 256,
   })
 
   // AI 指令
@@ -62,10 +66,10 @@ export default function SettingsModal() {
     setLocalAutoApprove(autoApprove)
     // 加载编辑器设置
     window.electronAPI.getSetting('editorSettings').then(s => {
-      if (s) setEditorSettings(s)
+      if (s) setEditorSettings(s as typeof editorSettings)
     })
     window.electronAPI.getSetting('aiInstructions').then(s => {
-      if (s) setAiInstructions(s)
+      if (s) setAiInstructions(s as string)
     })
   }, [llmConfig, language, autoApprove])
 
@@ -191,9 +195,18 @@ export default function SettingsModal() {
 
 
 // Provider 设置组件
+interface ProviderSettingsProps {
+  localConfig: LLMConfig
+  setLocalConfig: React.Dispatch<React.SetStateAction<LLMConfig>>
+  showApiKey: boolean
+  setShowApiKey: (show: boolean) => void
+  selectedProvider: { id: string; name: string; models: readonly string[] } | undefined
+  language: Language
+}
+
 function ProviderSettings({
   localConfig, setLocalConfig, showApiKey, setShowApiKey, selectedProvider, language
-}: any) {
+}: ProviderSettingsProps) {
   return (
     <div className="space-y-6 text-text-primary">
       <div>
@@ -289,7 +302,29 @@ function ProviderSettings({
 
 
 // 编辑器设置组件
-function EditorSettings({ settings, setSettings, language }: any) {
+interface EditorSettingsState {
+  fontSize: number
+  tabSize: number
+  wordWrap: 'on' | 'off' | 'wordWrapColumn'
+  lineNumbers: 'on' | 'off' | 'relative'
+  minimap: boolean
+  bracketPairColorization: boolean
+  formatOnSave: boolean
+  autoSave: 'off' | 'afterDelay' | 'onFocusChange'
+  theme: string
+  // AI 代码补全设置
+  completionEnabled: boolean
+  completionDebounceMs: number
+  completionMaxTokens: number
+}
+
+interface EditorSettingsProps {
+  settings: EditorSettingsState
+  setSettings: (settings: EditorSettingsState) => void
+  language: Language
+}
+
+function EditorSettings({ settings, setSettings, language }: EditorSettingsProps) {
   return (
     <div className="space-y-6 text-text-primary">
       <div className="grid grid-cols-2 gap-4">
@@ -322,7 +357,7 @@ function EditorSettings({ settings, setSettings, language }: any) {
           <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '自动换行' : 'Word Wrap'}</label>
           <select
             value={settings.wordWrap}
-            onChange={(e) => setSettings({ ...settings, wordWrap: e.target.value })}
+            onChange={(e) => setSettings({ ...settings, wordWrap: e.target.value as 'on' | 'off' | 'wordWrapColumn' })}
             className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
           >
             <option value="on">{language === 'zh' ? '开启' : 'On'}</option>
@@ -334,7 +369,7 @@ function EditorSettings({ settings, setSettings, language }: any) {
           <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '行号' : 'Line Numbers'}</label>
           <select
             value={settings.lineNumbers}
-            onChange={(e) => setSettings({ ...settings, lineNumbers: e.target.value })}
+            onChange={(e) => setSettings({ ...settings, lineNumbers: e.target.value as 'on' | 'off' | 'relative' })}
             className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
           >
             <option value="on">{language === 'zh' ? '显示' : 'On'}</option>
@@ -380,7 +415,7 @@ function EditorSettings({ settings, setSettings, language }: any) {
         <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '自动保存' : 'Auto Save'}</label>
         <select
           value={settings.autoSave}
-          onChange={(e) => setSettings({ ...settings, autoSave: e.target.value })}
+          onChange={(e) => setSettings({ ...settings, autoSave: e.target.value as 'off' | 'afterDelay' | 'onFocusChange' })}
           className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
         >
           <option value="off">{language === 'zh' ? '关闭' : 'Off'}</option>
@@ -388,13 +423,66 @@ function EditorSettings({ settings, setSettings, language }: any) {
           <option value="onFocusChange">{language === 'zh' ? '失去焦点时' : 'On Focus Change'}</option>
         </select>
       </div>
+
+      {/* AI 代码补全设置 */}
+      <div className="pt-4 border-t border-border-subtle">
+        <h3 className="text-sm font-medium mb-3">{language === 'zh' ? 'AI 代码补全' : 'AI Code Completion'}</h3>
+        
+        <div className="space-y-3">
+          <label className="flex items-center gap-3 p-3 rounded-lg border border-border-subtle hover:border-text-muted cursor-pointer bg-surface/50 transition-colors">
+            <input
+              type="checkbox"
+              checked={settings.completionEnabled}
+              onChange={(e) => setSettings({ ...settings, completionEnabled: e.target.checked })}
+              className="w-4 h-4 rounded border-border-subtle text-accent focus:ring-accent"
+            />
+            <div className="flex-1">
+              <span className="text-sm">{language === 'zh' ? '启用 AI 补全' : 'Enable AI Completion'}</span>
+              <p className="text-xs text-text-muted">{language === 'zh' ? '输入时显示 AI 代码建议' : 'Show AI code suggestions while typing'}</p>
+            </div>
+          </label>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mt-4">
+          <div>
+            <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '触发延迟 (ms)' : 'Trigger Delay (ms)'}</label>
+            <input
+              type="number"
+              value={settings.completionDebounceMs}
+              onChange={(e) => setSettings({ ...settings, completionDebounceMs: parseInt(e.target.value) || 150 })}
+              min={50} max={1000} step={50}
+              className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+            />
+            <p className="text-xs text-text-muted mt-1">{language === 'zh' ? '停止输入后等待时间' : 'Wait time after typing stops'}</p>
+          </div>
+          <div>
+            <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '最大 Token 数' : 'Max Tokens'}</label>
+            <input
+              type="number"
+              value={settings.completionMaxTokens}
+              onChange={(e) => setSettings({ ...settings, completionMaxTokens: parseInt(e.target.value) || 256 })}
+              min={64} max={1024} step={64}
+              className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+            />
+            <p className="text-xs text-text-muted mt-1">{language === 'zh' ? '补全建议的最大长度' : 'Maximum length of suggestions'}</p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
 
 
 // Agent 设置组件
-function AgentSettings({ autoApprove, setAutoApprove, aiInstructions, setAiInstructions, language }: any) {
+interface AgentSettingsProps {
+  autoApprove: { edits: boolean; terminal: boolean; dangerous: boolean }
+  setAutoApprove: (settings: { edits: boolean; terminal: boolean; dangerous: boolean }) => void
+  aiInstructions: string
+  setAiInstructions: (instructions: string) => void
+  language: Language
+}
+
+function AgentSettings({ autoApprove, setAutoApprove, aiInstructions, setAiInstructions, language }: AgentSettingsProps) {
   return (
     <div className="space-y-6 text-text-primary">
       <div>

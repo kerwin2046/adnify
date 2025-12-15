@@ -20,7 +20,7 @@ export interface Message {
 export interface ToolCall {
 	id: string
 	name: string
-	arguments: Record<string, any>
+	arguments: Record<string, unknown>
 	status: ToolStatus
 	approvalType?: ToolApprovalType
 	result?: string
@@ -55,6 +55,8 @@ interface EditorState {
 	chatMode: ChatMode
 	messages: Message[]
 	isStreaming: boolean
+    // currentToolCalls removed from public interface logic, handled within messages or separate component? 
+    // actually keeping it for active state is fine, but we need to link it visually.
 	currentToolCalls: ToolCall[]
 
 	// Terminal
@@ -76,6 +78,9 @@ interface EditorState {
 
 	// Sidebar
 	activeSidePanel: 'explorer' | 'search' | 'git' | 'settings' | null
+    
+    // Diff View
+    activeDiff: { original: string; modified: string; filePath: string } | null
 
 	// Actions
 	setWorkspacePath: (path: string | null) => void
@@ -88,10 +93,13 @@ interface EditorState {
 	markFileSaved: (path: string) => void
 	
 	setActiveSidePanel: (panel: 'explorer' | 'search' | 'git' | 'settings' | null) => void
+    setActiveDiff: (diff: { original: string; modified: string; filePath: string } | null) => void
 
 	setChatMode: (mode: ChatMode) => void
 	addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => void
 	updateLastMessage: (content: string) => void
+    appendTokenToLastMessage: (token: string) => void
+    finalizeLastMessage: () => void
 	setIsStreaming: (streaming: boolean) => void
 	clearMessages: () => void
 	addToolCall: (toolCall: Omit<ToolCall, 'status'>) => void
@@ -152,6 +160,7 @@ export const useStore = create<EditorState>((set) => ({
 	currentCheckpointIdx: -1,
 	activeSidePanel: 'explorer',
 	currentSessionId: null,
+    activeDiff: null,
 
 	// File explorer actions
 	setWorkspacePath: (path) => set({ workspacePath: path }),
@@ -167,6 +176,7 @@ export const useStore = create<EditorState>((set) => ({
 	}),
 	
 	setActiveSidePanel: (panel) => set({ activeSidePanel: panel }),
+    setActiveDiff: (diff) => set({ activeDiff: diff }),
 
 	// Editor actions
 	openFile: (path, content, originalContent) => set((state) => {
@@ -219,6 +229,28 @@ export const useStore = create<EditorState>((set) => ({
 		}
 		return { messages }
 	}),
+    appendTokenToLastMessage: (token) => set((state) => {
+        const messages = [...state.messages]
+        const lastIndex = messages.length - 1
+        if (lastIndex >= 0) {
+            const lastMsg = messages[lastIndex]
+            if (lastMsg.role === 'assistant' && !lastMsg.toolCallId) {
+                messages[lastIndex] = { ...lastMsg, content: lastMsg.content + token }
+            }
+        }
+        return { messages }
+    }),
+    finalizeLastMessage: () => set((state) => {
+        const messages = [...state.messages]
+        const lastIndex = messages.length - 1
+        if (lastIndex >= 0) {
+             // Only update if it's currently streaming to avoid unnecessary updates
+             if (messages[lastIndex].isStreaming) {
+                 messages[lastIndex] = { ...messages[lastIndex], isStreaming: false }
+             }
+        }
+        return { messages }
+    }),
 	setIsStreaming: (streaming) => set({ isStreaming: streaming }),
 	clearMessages: () => set({ messages: [], currentToolCalls: [] }),
 	addToolCall: (toolCall) => set((state) => ({

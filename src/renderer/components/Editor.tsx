@@ -1,7 +1,7 @@
 import { useRef, useCallback, useEffect, useState } from 'react'
 import MonacoEditor, { DiffEditor, OnMount, loader } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
-import { X, Circle, AlertTriangle, AlertCircle, RefreshCw, FileCode, ChevronRight, Home, GitCommit } from 'lucide-react'
+import { X, Circle, AlertTriangle, AlertCircle, RefreshCw, FileCode, ChevronRight, Home } from 'lucide-react'
 import { useStore } from '../store'
 import { t } from '../i18n'
 import DiffViewer from './DiffViewer'
@@ -9,6 +9,8 @@ import InlineEdit from './InlineEdit'
 import { lintService } from '../agent/lintService'
 import { streamingEditService } from '../agent/streamingEditService'
 import { LintError, StreamingEditState } from '../agent/toolTypes'
+import { completionService } from '../services/completionService'
+import { createGhostTextManager, GhostTextManager } from './GhostTextWidget'
 
 // Configure Monaco to load from CDN
 loader.config({
@@ -85,6 +87,7 @@ export default function Editor() {
   const { openFiles, activeFilePath, setActiveFile, closeFile, updateFileContent, markFileSaved, language } = useStore()
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null)
+  const ghostTextRef = useRef<GhostTextManager | null>(null)
 
   // Lint 错误状态
   const [lintErrors, setLintErrors] = useState<LintError[]>([])
@@ -101,6 +104,9 @@ export default function Editor() {
     selectedCode: string
     lineRange: [number, number]
   } | null>(null)
+
+  // AI 代码补全状态
+  const [completionEnabled] = useState(true)
 
   const activeFile = openFiles.find(f => f.path === activeFilePath)
   const activeLanguage = activeFile ? getLanguage(activeFile.path) : 'plaintext'
@@ -218,7 +224,107 @@ export default function Editor() {
         }
       }
     })
+
+    // ============ AI Code Completion Integration ============
+    
+    // Initialize ghost text manager
+    ghostTextRef.current = createGhostTextManager(editor)
+
+    // Ctrl+Space: 手动触发补全
+    editor.addAction({
+      id: 'trigger-ai-completion',
+      label: 'Trigger AI Completion',
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Space],
+      run: () => {
+        if (!completionEnabled) return
+        triggerCompletion(editor)
+      }
+    })
+
+    // Tab: 接受补全建议
+    editor.addCommand(monaco.KeyCode.Tab, () => {
+      if (ghostTextRef.current?.isShowing()) {
+        ghostTextRef.current.accept()
+      } else {
+        // 默认 Tab 行为
+        editor.trigger('keyboard', 'tab', {})
+      }
+    })
+
+    // Escape: 取消补全建议
+    editor.addCommand(monaco.KeyCode.Escape, () => {
+      if (ghostTextRef.current?.isShowing()) {
+        ghostTextRef.current.hide()
+        completionService.cancel()
+      } else {
+        // 默认 Escape 行为
+        editor.trigger('keyboard', 'escape', {})
+      }
+    })
+
+    // 监听内容变化，自动触发补全
+    editor.onDidChangeModelContent((e) => {
+      if (!completionEnabled) return
+      
+      // 检查是否应该触发补全
+      const changes = e.changes
+      if (changes.length > 0) {
+        const lastChange = changes[changes.length - 1]
+        const insertedText = lastChange.text
+        
+        // 如果是单字符输入且是触发字符
+        if (insertedText.length === 1 && completionService.shouldTrigger(insertedText)) {
+          triggerCompletion(editor)
+        } else if (insertedText.length > 0 && !insertedText.includes('\n')) {
+          // 普通输入也触发（带 debounce）
+          triggerCompletion(editor)
+        } else {
+          // 换行或删除时隐藏补全
+          ghostTextRef.current?.hide()
+          completionService.cancel()
+        }
+      }
+    })
+
+    // 光标移动时隐藏补全
+    editor.onDidChangeCursorPosition(() => {
+      // 只在有补全显示时隐藏
+      if (ghostTextRef.current?.isShowing()) {
+        ghostTextRef.current.hide()
+        completionService.cancel()
+      }
+    })
+
+    // 设置补全回调
+    completionService.onCompletion((result) => {
+      if (!result || result.suggestions.length === 0) return
+      
+      const suggestion = result.suggestions[0]
+      const position = editor.getPosition()
+      if (position && ghostTextRef.current) {
+        ghostTextRef.current.show(suggestion.text, position)
+      }
+    })
+
+    completionService.onError((error) => {
+      console.error('Completion error:', error)
+    })
   }
+
+  // 触发补全的辅助函数
+  const triggerCompletion = useCallback((ed: editor.IStandaloneCodeEditor) => {
+    const model = ed.getModel()
+    const position = ed.getPosition()
+    if (!model || !position || !activeFilePath) return
+
+    const context = completionService.buildContext(
+      activeFilePath,
+      model.getValue(),
+      { line: position.lineNumber - 1, column: position.column - 1 }
+    )
+
+    completionService.requestCompletion(context)
+  }, [activeFilePath])
 
   // 监听流式编辑
   useEffect(() => {
@@ -278,7 +384,7 @@ export default function Editor() {
     }
   }, [activeFilePath])
 
-  // 文件变化时清除 lint 错误
+  // 文件变化时清除 lint 错误和补全
   useEffect(() => {
     setLintErrors([])
     if (editorRef.current && monacoRef.current) {
@@ -287,7 +393,18 @@ export default function Editor() {
         monacoRef.current.editor.setModelMarkers(model, 'lint', [])
       }
     }
+    // 清除补全状态
+    ghostTextRef.current?.hide()
+    completionService.cancel()
   }, [activeFilePath])
+
+  // 清理 ghost text manager
+  useEffect(() => {
+    return () => {
+      ghostTextRef.current?.dispose()
+      completionService.cancel()
+    }
+  }, [])
 
   const handleSave = useCallback(async () => {
     if (activeFile) {

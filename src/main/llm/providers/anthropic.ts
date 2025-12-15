@@ -88,7 +88,7 @@ export class AnthropicProvider extends BaseProvider {
 					const toolCall: ToolCall = {
 						id: block.id,
 						name: block.name,
-						arguments: block.input as Record<string, any>,
+						arguments: block.input as Record<string, unknown>,
 					}
 					toolCalls.push(toolCall)
 					onToolCall(toolCall)
@@ -110,7 +110,7 @@ export class AnthropicProvider extends BaseProvider {
 				}
 			})
 
-		} catch (error: any) {
+		} catch (error: unknown) {
 			const llmError = this.parseError(error)
 			this.log('error', 'Chat failed', { code: llmError.code, message: llmError.message })
 			onError(llmError)

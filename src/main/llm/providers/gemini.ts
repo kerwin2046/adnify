@@ -3,7 +3,7 @@
  * 支持 Google Gemini 系列模型
  */
 
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai'
+import { GoogleGenerativeAI, SchemaType, Content } from '@google/generative-ai'
 import { BaseProvider } from './base'
 import { ChatParams, ToolDefinition, ToolCall } from '../types'
 
@@ -47,14 +47,16 @@ export class GeminiProvider extends BaseProvider {
 		try {
 			this.log('info', 'Starting chat', { model, messageCount: messages.length })
 
+			// Note: tools type assertion needed due to Gemini SDK's complex tool type structure
+			// Our convertTools returns a compatible structure but TypeScript can't verify it
 			const genModel = this.client.getGenerativeModel({
 				model,
 				systemInstruction: systemPrompt,
-				tools: this.convertTools(tools) as any,
+				tools: this.convertTools(tools) as Parameters<typeof this.client.getGenerativeModel>[0]['tools'],
 			})
 
 			// 构建历史记录
-			const history: any[] = []
+			const history: Content[] = []
 			let lastUserMessage = ''
 
 			for (const msg of messages) {
@@ -82,7 +84,7 @@ export class GeminiProvider extends BaseProvider {
 						role: 'user',
 						parts: [{
 							functionResponse: {
-								name: msg.toolName,
+								name: msg.toolName || '',
 								response: { result: msg.content }
 							}
 						}]
@@ -112,7 +114,7 @@ export class GeminiProvider extends BaseProvider {
 							const toolCall: ToolCall = {
 								id: `gemini-${Date.now()}-${Math.random().toString(36).slice(2)}`,
 								name: part.functionCall.name,
-								arguments: part.functionCall.args as Record<string, any>,
+								arguments: part.functionCall.args as Record<string, unknown>,
 							}
 							toolCalls.push(toolCall)
 							onToolCall(toolCall)
@@ -131,7 +133,7 @@ export class GeminiProvider extends BaseProvider {
 				toolCalls: toolCalls.length > 0 ? toolCalls : undefined
 			})
 
-		} catch (error: any) {
+		} catch (error: unknown) {
 			const llmError = this.parseError(error)
 			this.log('error', 'Chat failed', { code: llmError.code, message: llmError.message })
 			onError(llmError)

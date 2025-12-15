@@ -111,12 +111,13 @@ export class LLMService {
 				}
 			})
 
-		} catch (error: any) {
+		} catch (error: unknown) {
 			// 处理未捕获的错误
-			if (error.name !== 'AbortError') {
+			const err = error as { name?: string; message?: string }
+			if (err.name !== 'AbortError') {
 				console.error('[LLMService] Uncaught error:', error)
 				this.window.webContents.send('llm:error', {
-					message: error.message || 'Unknown error',
+					message: err.message || 'Unknown error',
 					code: LLMErrorCode.UNKNOWN,
 					retryable: false
 				})

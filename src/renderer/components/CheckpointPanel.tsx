@@ -129,10 +129,11 @@ export default function CheckpointPanel({ onClose }: CheckpointPanelProps) {
           content: `⚠️ Rollback completed with errors:\n${result.errors.join('\n')}`,
         })
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const err = error as { message?: string }
       addMessage({
         role: 'assistant',
-        content: `❌ Rollback failed: ${error.message}`,
+        content: `❌ Rollback failed: ${err.message}`,
       })
     } finally {
       setIsRollingBack(false)

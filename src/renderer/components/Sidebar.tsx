@@ -639,7 +639,7 @@ function GitView() {
             ])
             setStatus(s)
             setCommits(c)
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.error('Git status error:', e)
             setError('Failed to load git status')
         } finally {

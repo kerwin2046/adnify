@@ -286,8 +286,9 @@ class GitService {
 				success: result.exitCode === 0,
 				error: result.exitCode !== 0 ? result.errorOutput || result.output : undefined,
 			}
-		} catch (e: any) {
-			return { success: false, error: e.message }
+		} catch (e: unknown) {
+			const err = e as { message?: string }
+			return { success: false, error: err.message }
 		}
 	}
 }

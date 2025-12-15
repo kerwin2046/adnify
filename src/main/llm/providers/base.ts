@@ -17,12 +17,13 @@ export abstract class BaseProvider implements LLMProvider {
 	/**
 	 * 解析 API 错误，转换为统一的 LLMError
 	 */
-	protected parseError(error: any): LLMError {
-		const message = error.message || 'Unknown error'
-		const status = error.status || error.statusCode
+	protected parseError(error: unknown): LLMError {
+		const err = error as { message?: string; status?: number; statusCode?: number; code?: string; name?: string }
+		const message = err.message || 'Unknown error'
+		const status = err.status || err.statusCode
 
 		// 网络错误
-		if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+		if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
 			return new LLMError(
 				'Network error: Unable to connect to API',
 				LLMErrorCode.NETWORK_ERROR,
@@ -32,7 +33,7 @@ export abstract class BaseProvider implements LLMProvider {
 		}
 
 		// 超时
-		if (error.code === 'ETIMEDOUT' || error.name === 'TimeoutError') {
+		if (err.code === 'ETIMEDOUT' || err.name === 'TimeoutError') {
 			return new LLMError(
 				'Request timeout',
 				LLMErrorCode.TIMEOUT,
@@ -42,7 +43,7 @@ export abstract class BaseProvider implements LLMProvider {
 		}
 
 		// 中止
-		if (error.name === 'AbortError') {
+		if (err.name === 'AbortError') {
 			return new LLMError(
 				'Request aborted',
 				LLMErrorCode.ABORTED,
@@ -124,7 +125,7 @@ export abstract class BaseProvider implements LLMProvider {
 	/**
 	 * 日志输出
 	 */
-	protected log(level: 'info' | 'warn' | 'error', message: string, data?: any) {
+	protected log(level: 'info' | 'warn' | 'error', message: string, data?: unknown) {
 		const prefix = `[${this.name}]`
 		switch (level) {
 			case 'info':

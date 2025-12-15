@@ -17,7 +17,7 @@ export interface LLMStreamChunk {
 export interface LLMToolCall {
 	id: string
 	name: string
-	arguments: Record<string, any>
+	arguments: Record<string, unknown>
 }
 
 export interface LLMResult {
@@ -35,6 +35,54 @@ export interface LLMError {
 	message: string
 	code: string
 	retryable: boolean
+}
+
+export interface SearchFilesOptions {
+	isRegex: boolean
+	isCaseSensitive: boolean
+	isWholeWord: boolean
+	exclude?: string
+}
+
+export interface SearchFileResult {
+	path: string
+	line: number
+	text: string
+}
+
+export interface LLMMessage {
+	role: 'user' | 'assistant' | 'system' | 'tool'
+	content: string
+	toolCallId?: string
+	toolName?: string
+}
+
+export interface ToolDefinition {
+	name: string
+	description: string
+	parameters: {
+		type: 'object'
+		properties: Record<string, {
+			type: string
+			description: string
+			enum?: string[]
+		}>
+		required?: string[]
+	}
+}
+
+export interface LLMSendMessageParams {
+	config: LLMConfig
+	messages: LLMMessage[]
+	tools?: ToolDefinition[]
+	systemPrompt?: string
+}
+
+export interface LLMConfig {
+	provider: string
+	model: string
+	apiKey: string
+	baseUrl?: string
 }
 
 export interface ElectronAPI {
@@ -55,14 +103,14 @@ export interface ElectronAPI {
 	mkdir: (path: string) => Promise<boolean>
 	deleteFile: (path: string) => Promise<boolean>
 	renameFile: (oldPath: string, newPath: string) => Promise<boolean>
-	searchFiles: (query: string, rootPath: string, options?: { isRegex: boolean; isCaseSensitive: boolean; isWholeWord: boolean; exclude?: string }) => Promise<{ path: string; line: number; text: string }[]>
+	searchFiles: (query: string, rootPath: string, options?: SearchFilesOptions) => Promise<SearchFileResult[]>
 
 	// Settings
-	getSetting: (key: string) => Promise<any>
-	setSetting: (key: string, value: any) => Promise<boolean>
+	getSetting: (key: string) => Promise<unknown>
+	setSetting: (key: string, value: unknown) => Promise<boolean>
 
 	// LLM
-	sendMessage: (params: any) => Promise<void>
+	sendMessage: (params: LLMSendMessageParams) => Promise<void>
 	abortMessage: () => void
 	onLLMStream: (callback: (chunk: LLMStreamChunk) => void) => () => void
 	onLLMToolCall: (callback: (toolCall: LLMToolCall) => void) => () => void

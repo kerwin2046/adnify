@@ -40,7 +40,7 @@ export interface ToolDefinition {
 export interface ToolCall {
 	id: string
 	name: string
-	arguments: Record<string, any>
+	arguments: Record<string, unknown>
 }
 
 export interface StreamChunk {
@@ -81,7 +81,7 @@ export class LLMError extends Error {
 		public code: LLMErrorCode,
 		public status?: number,
 		public retryable: boolean = false,
-		public details?: any
+		public details?: unknown
 	) {
 		super(message)
 		this.name = 'LLMError'

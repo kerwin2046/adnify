@@ -29,6 +29,7 @@ export function useAgent() {
 		updateToolCall,
 		setPendingToolCall,
 		addCheckpoint,
+        finalizeLastMessage,
 	} = useStore()
 
 	const abortRef = useRef(false)
@@ -116,8 +117,8 @@ export function useAgent() {
 			loopCount++
 			shouldContinue = false
 
-			// 添加助手响应占位符
-			addMessage({ role: 'assistant', content: '', isStreaming: true })
+			// Add placeholder to indicate activity
+			addMessage({ role: 'assistant', content: 'Thinking...', isStreaming: true })
 
 			// 获取工具（仅 agent 模式）
 			const tools = chatMode === 'agent' ? getTools() : undefined
@@ -140,9 +141,19 @@ export function useAgent() {
 				systemPrompt,
 				onStream: (chunk) => {
 					if (chunk.type === 'text' && chunk.content) {
-						updateLastMessage(
-							(useStore.getState().messages.at(-1)?.content || '') + chunk.content
-						)
+                        const state = useStore.getState()
+                        const lastMsg = state.messages.at(-1)
+                        
+                        if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.toolCallId) {
+                            // If it's the placeholder, replace it. Otherwise append.
+                            if (lastMsg.content === 'Thinking...') {
+                                state.updateLastMessage(chunk.content)
+                            } else {
+                                state.appendTokenToLastMessage(chunk.content)
+                            }
+                        } else {
+                             state.addMessage({ role: 'assistant', content: chunk.content, isStreaming: true })
+                        }
 					}
 				},
 				onToolCall: (toolCall) => {
@@ -162,10 +173,29 @@ export function useAgent() {
 					? `❌ ${result.error.message}\n\nThis error may be temporary. Please try again.`
 					: `❌ ${result.error.message}`
 
-				updateLastMessage(errorMessage)
+                const lastMsg = useStore.getState().messages.at(-1)
+                if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.toolCallId) {
+				    updateLastMessage(errorMessage)
+                } else {
+                    addMessage({ role: 'assistant', content: errorMessage })
+                }
 				setIsStreaming(false)
+                finalizeLastMessage()
 				return
 			}
+
+			// 确保消息已上屏 (处理非流式响应或极快响应)
+            const finalContent = result.data?.content || ''
+            if (finalContent) {
+                const lastMsg = useStore.getState().messages.at(-1)
+                // 如果最后一条不是助手消息，或者它是工具调用输出，说明我们需要添加助手的新消息
+                if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.toolCallId) {
+                    addMessage({ role: 'assistant', content: finalContent })
+                } else if (lastMsg.content.length < finalContent.length) {
+                    // 如果流式传输不完整，用最终结果覆盖
+                    updateLastMessage(finalContent)
+                }
+            }
 
 			// 更新对话历史
 			const assistantContent = useStore.getState().messages.at(-1)?.content || ''
@@ -185,6 +215,7 @@ export function useAgent() {
 						toolCall,
 						conversationMessages,
 						autoApprove,
+                        workspacePath,
 						waitForApproval,
 						updateToolCall,
 						addMessage,
@@ -202,10 +233,11 @@ export function useAgent() {
 		}
 
 		setIsStreaming(false)
+        finalizeLastMessage()
 	}, [
 		chatMode, messages, llmConfig, workspacePath, autoApprove,
 		addMessage, updateLastMessage, setIsStreaming, addToolCall, updateToolCall,
-		addCheckpoint, waitForApproval
+		addCheckpoint, waitForApproval, finalizeLastMessage
 	])
 
 	// 中止
@@ -213,13 +245,14 @@ export function useAgent() {
 		abortRef.current = true
 		window.electronAPI.abortMessage()
 		setIsStreaming(false)
+        finalizeLastMessage()
 
 		if (approvalResolverRef.current) {
 			approvalResolverRef.current(false)
 			approvalResolverRef.current = null
 		}
 		setPendingToolCall(null)
-	}, [setIsStreaming, setPendingToolCall])
+	}, [setIsStreaming, setPendingToolCall, finalizeLastMessage])
 
 	// 回滚到检查点
 	const rollbackToCheckpoint = useCallback(async (checkpointId: string) => {
@@ -248,13 +281,41 @@ export function useAgent() {
 	}
 }
 
+interface LLMMessageForSend {
+	role: 'user' | 'assistant' | 'system' | 'tool'
+	content: string
+	toolCallId?: string
+	toolName?: string
+}
+
+interface ToolDefinitionForSend {
+	name: string
+	description: string
+	parameters: {
+		type: 'object'
+		properties: Record<string, {
+			type: string
+			description: string
+			enum?: string[]
+		}>
+		required?: string[]
+	}
+}
+
+interface LLMConfigForSend {
+	provider: string
+	model: string
+	apiKey: string
+	baseUrl?: string
+}
+
 /**
  * 发送请求到 LLM 并等待响应
  */
 async function sendToLLM(params: {
-	config: any
-	messages: any[]
-	tools?: any[]
+	config: LLMConfigForSend
+	messages: LLMMessageForSend[]
+	tools?: ToolDefinitionForSend[]
 	systemPrompt: string
 	onStream: (chunk: LLMStreamChunk) => void
 	onToolCall: (toolCall: LLMToolCall) => void
@@ -331,17 +392,33 @@ async function sendToLLM(params: {
 	})
 }
 
+interface MessageToAdd {
+	role: 'user' | 'assistant' | 'tool'
+	content: string
+	toolCallId?: string
+	toolName?: string
+}
+
+interface CheckpointToAdd {
+	id: string
+	type: 'user_message' | 'tool_edit'
+	timestamp: number
+	snapshots: Record<string, { path: string; content: string; timestamp: number }>
+	description: string
+}
+
 /**
  * 处理单个工具调用
  */
 async function processToolCall(
 	toolCall: LLMToolCall,
-	conversationMessages: any[],
+	conversationMessages: LLMMessageForSend[],
 	autoApprove: { edits: boolean; terminal: boolean; dangerous: boolean },
+    workspacePath: string | null,
 	waitForApproval: (tc: ToolCall) => Promise<boolean>,
 	updateToolCall: (id: string, updates: Partial<ToolCall>) => void,
-	addMessage: (msg: any) => void,
-	addCheckpoint: (cp: any) => void
+	addMessage: (msg: MessageToAdd) => void,
+	addCheckpoint: (cp: CheckpointToAdd) => void
 ): Promise<boolean> {
 	const approvalType = getToolApprovalType(toolCall.name)
 	const toolCallWithApproval: ToolCall = {
@@ -396,7 +473,7 @@ async function processToolCall(
 	}
 
 	try {
-		const toolResult = await executeToolCall(toolCall.name, toolCall.arguments)
+		const toolResult = await executeToolCall(toolCall.name, toolCall.arguments, workspacePath)
 		const resultStr = typeof toolResult === 'string' ? toolResult : JSON.stringify(toolResult)
 
 		updateToolCall(toolCall.id, {
@@ -427,22 +504,23 @@ async function processToolCall(
 
 		return true
 
-	} catch (error: any) {
+	} catch (error: unknown) {
+		const err = error as { message?: string }
 		updateToolCall(toolCall.id, {
 			status: 'error' as ToolStatus,
-			error: error.message
+			error: err.message
 		})
 
 		addMessage({
 			role: 'tool',
-			content: `❌ Error: ${error.message}`,
+			content: `❌ Error: ${err.message}`,
 			toolCallId: toolCall.id,
 			toolName: toolCall.name,
 		})
 
 		conversationMessages.push({
 			role: 'tool',
-			content: `Error: ${error.message}`,
+			content: `Error: ${err.message}`,
 			toolCallId: toolCall.id,
 			toolName: toolCall.name,
 		})

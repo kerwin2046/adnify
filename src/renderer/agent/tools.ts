@@ -243,9 +243,10 @@ export function getToolApprovalType(toolName: string): ToolApprovalType | undefi
 /**
  * 解析 search/replace blocks
  */
-function parseSearchReplaceBlocks(blocksStr: string): SearchReplaceBlock[] {
+export function parseSearchReplaceBlocks(blocksStr: string): SearchReplaceBlock[] {
 	const blocks: SearchReplaceBlock[] = []
-	const regex = /<<<SEARCH\n([\s\S]*?)\n===\n([\s\S]*?)\n>>>/g
+	// Robust regex: allows optional whitespace/newline after === (handles missing newline from LLM)
+	const regex = /<<<SEARCH\n([\s\S]*?)\n===(?:[ \t]*\n)?([\s\S]*?)\n>>>/g
 	let match
 
 	while ((match = regex.exec(blocksStr)) !== null) {
@@ -261,7 +262,7 @@ function parseSearchReplaceBlocks(blocksStr: string): SearchReplaceBlock[] {
 /**
  * 应用 search/replace blocks 到文件内容
  */
-function applySearchReplaceBlocks(content: string, blocks: SearchReplaceBlock[]): {
+export function applySearchReplaceBlocks(content: string, blocks: SearchReplaceBlock[]): {
 	newContent: string
 	appliedCount: number
 	errors: string[]
@@ -375,14 +376,38 @@ function formatDirTree(nodes: DirTreeNode[], prefix: string = ''): string {
  */
 export async function executeToolCall(
 	toolName: string,
-	args: Record<string, any>
+	args: Record<string, unknown>,
+    workspacePath?: string | null
 ): Promise<string> {
+	// Helper to safely get string args
+	const getString = (key: string): string => args[key] as string
+	const getNumber = (key: string, defaultVal?: number): number => {
+		const val = args[key]
+		return typeof val === 'number' ? val : (defaultVal ?? 0)
+	}
+	const getBoolean = (key: string): boolean => Boolean(args[key])
+
+    // Helper to resolve paths
+    const resolvePath = (p: string): string => {
+        if (!p) return ''
+        // If absolute path (simple check for unix/win), return it
+        if (p.startsWith('/') || p.match(/^[a-zA-Z]:/)) return p
+        // If workspace set, join
+        if (workspacePath) {
+            // Simple join handling, assuming forward slashes usually from LLM
+            const sep = workspacePath.includes('\\') ? '\\' : '/'
+            return `${workspacePath}${sep}${p}`
+        }
+        return p
+    }
+
 	switch (toolName) {
 		// ===== 读取类 =====
 		case 'read_file': {
-			const content = await window.electronAPI.readFile(args.path)
+			const path = resolvePath(getString('path'))
+			const content = await window.electronAPI.readFile(path)
 			if (content === null) {
-				throw new Error(`File not found: ${args.path}`)
+				throw new Error(`File not found: ${path}`)
 			}
 
 			const lines = content.split('\n')
@@ -390,20 +415,20 @@ export async function executeToolCall(
 			const totalChars = content.length
 
 			// 处理行范围
-			let startLine = args.start_line ? Math.max(1, args.start_line) : 1
-			let endLine = args.end_line ? Math.min(totalLines, args.end_line) : totalLines
+			const startLine = args.start_line ? Math.max(1, getNumber('start_line')) : 1
+			const endLine = args.end_line ? Math.min(totalLines, getNumber('end_line')) : totalLines
 
 			let selectedContent = lines.slice(startLine - 1, endLine).join('\n')
 
 			// 分页处理
-			const page = args.page || 1
+			const page = getNumber('page', 1)
 			const startIdx = (page - 1) * PAGE_SIZE.FILE_CHARS
 			const endIdx = page * PAGE_SIZE.FILE_CHARS
 			const hasNextPage = selectedContent.length > endIdx
 
 			selectedContent = selectedContent.slice(startIdx, endIdx)
 
-			let result = `File: ${args.path}\n`
+			let result = `File: ${path}\n`
 			result += `Lines ${startLine}-${endLine} of ${totalLines} (${totalChars} chars total)\n`
 			result += '```\n' + selectedContent + '\n```'
 
@@ -415,12 +440,13 @@ export async function executeToolCall(
 		}
 
 		case 'list_directory': {
-			const items = await window.electronAPI.readDir(args.path)
+			const path = resolvePath(getString('path'))
+			const items = await window.electronAPI.readDir(path)
 			if (!items || items.length === 0) {
-				return `Directory is empty or does not exist: ${args.path}`
+				return `Directory is empty or does not exist: ${path}`
 			}
 
-			const page = args.page || 1
+			const page = getNumber('page', 1)
 			const startIdx = (page - 1) * PAGE_SIZE.DIR_ITEMS
 			const endIdx = page * PAGE_SIZE.DIR_ITEMS
 			const pageItems = items.slice(startIdx, endIdx)
@@ -430,7 +456,7 @@ export async function executeToolCall(
 				`${item.isDirectory ? '📁' : '📄'} ${item.name}`
 			).join('\n')
 
-			let result = `Contents of ${args.path} (${items.length} items):\n${formatted}`
+			let result = `Contents of ${path} (${items.length} items):\n${formatted}`
 
 			if (hasNextPage) {
 				result += `\n\n(${items.length - endIdx} more items on page ${page + 1}...)`
@@ -440,25 +466,31 @@ export async function executeToolCall(
 		}
 
 		case 'get_dir_tree': {
-			const maxDepth = Math.min(args.max_depth || 3, 5)
-			const tree = await buildDirTree(args.path, maxDepth)
+			const path = resolvePath(getString('path'))
+			const maxDepth = Math.min(getNumber('max_depth', 3), 5)
+			const tree = await buildDirTree(path, maxDepth)
 
 			if (tree.length === 0) {
-				return `Directory is empty or does not exist: ${args.path}`
+				return `Directory is empty or does not exist: ${path}`
 			}
 
 			const formatted = formatDirTree(tree)
-			return `Directory tree of ${args.path}:\n${formatted}`
+			return `Directory tree of ${path}:\n${formatted}`
 		}
 
 		case 'search_files': {
-			const items = await window.electronAPI.readDir(args.path)
-			if (!items) return `Directory not found: ${args.path}`
+			const path = resolvePath(getString('path'))
+			const pattern = getString('pattern')
+			const filePatternStr = args.file_pattern as string | undefined
+			const isRegex = getBoolean('is_regex')
+			
+			const items = await window.electronAPI.readDir(path)
+			if (!items) return `Directory not found: ${path}`
 
 			const results: { file: string; matches: { line: number; content: string }[] }[] = []
-			const pattern = args.is_regex ? new RegExp(args.pattern, 'gi') : null
-			const filePattern = args.file_pattern ? new RegExp(
-				args.file_pattern.replace(/\*/g, '.*').replace(/\?/g, '.'),
+			const regexPattern = isRegex ? new RegExp(pattern, 'gi') : null
+			const filePattern = filePatternStr ? new RegExp(
+				filePatternStr.replace(/\*/g, '.*').replace(/\?/g, '.'),
 				'i'
 			) : null
 
@@ -474,9 +506,9 @@ export async function executeToolCall(
 
 				for (let i = 0; i < lines.length; i++) {
 					const line = lines[i]
-					const isMatch = pattern
-						? pattern.test(line)
-						: line.toLowerCase().includes(args.pattern.toLowerCase())
+					const isMatch = regexPattern
+						? regexPattern.test(line)
+						: line.toLowerCase().includes(pattern.toLowerCase())
 
 					if (isMatch) {
 						matches.push({
@@ -486,7 +518,7 @@ export async function executeToolCall(
 					}
 
 					// 重置 regex lastIndex
-					if (pattern) pattern.lastIndex = 0
+					if (regexPattern) regexPattern.lastIndex = 0
 				}
 
 				if (matches.length > 0) {
@@ -495,14 +527,14 @@ export async function executeToolCall(
 			}
 
 			if (results.length === 0) {
-				return `No matches found for "${args.pattern}" in ${args.path}`
+				return `No matches found for "${pattern}" in ${path}`
 			}
 
 			// 分页
-			const page = args.page || 1
-			const startIdx = (page - 1) * PAGE_SIZE.SEARCH_RESULTS
-			const endIdx = page * PAGE_SIZE.SEARCH_RESULTS
-			const pageResults = results.slice(startIdx, endIdx)
+			const searchPage = getNumber('page', 1)
+			const searchStartIdx = (searchPage - 1) * PAGE_SIZE.SEARCH_RESULTS
+			const searchEndIdx = searchPage * PAGE_SIZE.SEARCH_RESULTS
+			const pageResults = results.slice(searchStartIdx, searchEndIdx)
 
 			let output = `Found ${results.length} files with matches:\n\n`
 			for (const r of pageResults) {
@@ -513,28 +545,32 @@ export async function executeToolCall(
 				output += '\n'
 			}
 
-			if (results.length > endIdx) {
-				output += `(${results.length - endIdx} more files on page ${page + 1}...)`
+			if (results.length > searchEndIdx) {
+				output += `(${results.length - searchEndIdx} more files on page ${searchPage + 1}...)`
 			}
 
 			return output
 		}
 
 		case 'search_in_file': {
-			const content = await window.electronAPI.readFile(args.path)
+			const filePath = resolvePath(getString('path'))
+			const searchPattern = getString('pattern')
+			const isSearchRegex = getBoolean('is_regex')
+			
+			const content = await window.electronAPI.readFile(filePath)
 			if (content === null) {
-				throw new Error(`File not found: ${args.path}`)
+				throw new Error(`File not found: ${filePath}`)
 			}
 
 			const lines = content.split('\n')
-			const pattern = args.is_regex ? new RegExp(args.pattern, 'gi') : null
+			const searchRegex = isSearchRegex ? new RegExp(searchPattern, 'gi') : null
 			const matches: { line: number; content: string }[] = []
 
 			for (let i = 0; i < lines.length; i++) {
 				const line = lines[i]
-				const isMatch = pattern
-					? pattern.test(line)
-					: line.includes(args.pattern)
+				const isMatch = searchRegex
+					? searchRegex.test(line)
+					: line.includes(searchPattern)
 
 				if (isMatch) {
 					matches.push({
@@ -543,14 +579,14 @@ export async function executeToolCall(
 					})
 				}
 
-				if (pattern) pattern.lastIndex = 0
+				if (searchRegex) searchRegex.lastIndex = 0
 			}
 
 			if (matches.length === 0) {
-				return `No matches found for "${args.pattern}" in ${args.path}`
+				return `No matches found for "${searchPattern}" in ${filePath}`
 			}
 
-			let output = `Found ${matches.length} matches in ${args.path}:\n\n`
+			let output = `Found ${matches.length} matches in ${filePath}:\n\n`
 			for (const m of matches.slice(0, 50)) {
 				output += `Line ${m.line}: ${m.content}\n`
 			}
@@ -564,12 +600,13 @@ export async function executeToolCall(
 
 		// ===== 编辑类 =====
 		case 'edit_file': {
-			const content = await window.electronAPI.readFile(args.path)
+			const editPath = resolvePath(getString('path'))
+			const content = await window.electronAPI.readFile(editPath)
 			if (content === null) {
-				throw new Error(`File not found: ${args.path}`)
+				throw new Error(`File not found: ${editPath}`)
 			}
 
-			const blocks = parseSearchReplaceBlocks(args.search_replace_blocks)
+			const blocks = parseSearchReplaceBlocks(getString('search_replace_blocks'))
 			if (blocks.length === 0) {
 				throw new Error('No valid search/replace blocks found. Use format: <<<SEARCH\\nold_code\\n===\\nnew_code\\n>>>')
 			}
@@ -580,12 +617,12 @@ export async function executeToolCall(
 				throw new Error(`No changes applied. Errors:\n${errors.join('\n')}`)
 			}
 
-			const success = await window.electronAPI.writeFile(args.path, newContent)
+			const success = await window.electronAPI.writeFile(editPath, newContent)
 			if (!success) {
-				throw new Error(`Failed to write file: ${args.path}`)
+				throw new Error(`Failed to write file: ${editPath}`)
 			}
 
-			let result = `✅ Applied ${appliedCount}/${blocks.length} changes to ${args.path}`
+			let result = `✅ Applied ${appliedCount}/${blocks.length} changes to ${editPath}`
 			if (errors.length > 0) {
 				result += `\n⚠️ Warnings:\n${errors.join('\n')}`
 			}
@@ -594,48 +631,55 @@ export async function executeToolCall(
 		}
 
 		case 'write_file': {
-			const success = await window.electronAPI.writeFile(args.path, args.content)
+			const writePath = resolvePath(getString('path'))
+			const writeContent = getString('content')
+			const success = await window.electronAPI.writeFile(writePath, writeContent)
 			if (!success) {
-				throw new Error(`Failed to write file: ${args.path}`)
+				throw new Error(`Failed to write file: ${writePath}`)
 			}
-			return `✅ Successfully wrote ${args.content.length} chars to ${args.path}`
+			return `✅ Successfully wrote ${writeContent.length} chars to ${writePath}`
 		}
 
 		case 'create_file_or_folder': {
-			const isFolder = args.path.endsWith('/') || args.path.endsWith('\\')
+			const createPath = resolvePath(getString('path'))
+			const isFolder = createPath.endsWith('/') || createPath.endsWith('\\')
 
 			if (isFolder) {
-				const success = await window.electronAPI.mkdir(args.path)
-				if (!success) throw new Error(`Failed to create folder: ${args.path}`)
-				return `✅ Created folder: ${args.path}`
+				const success = await window.electronAPI.mkdir(createPath)
+				if (!success) throw new Error(`Failed to create folder: ${createPath}`)
+				return `✅ Created folder: ${createPath}`
 			} else {
-				const content = args.content || ''
-				const success = await window.electronAPI.writeFile(args.path, content)
-				if (!success) throw new Error(`Failed to create file: ${args.path}`)
-				return `✅ Created file: ${args.path}`
+				const createContent = (args.content as string) || ''
+				const success = await window.electronAPI.writeFile(createPath, createContent)
+				if (!success) throw new Error(`Failed to create file: ${createPath}`)
+				return `✅ Created file: ${createPath}`
 			}
 		}
 
 		case 'delete_file_or_folder': {
-			const success = await window.electronAPI.deleteFile(args.path)
+			const deletePath = resolvePath(getString('path'))
+			const success = await window.electronAPI.deleteFile(deletePath)
 			if (!success) {
-				throw new Error(`Failed to delete: ${args.path}`)
+				throw new Error(`Failed to delete: ${deletePath}`)
 			}
-			return `✅ Deleted: ${args.path}`
+			return `✅ Deleted: ${deletePath}`
 		}
 
 		// ===== 终端 =====
 		case 'run_command': {
-			const timeout = (args.timeout || 30) * 1000
+			const command = getString('command')
+			const cwd = args.cwd as string | undefined
+			const timeoutSec = getNumber('timeout', 30)
+			const timeout = timeoutSec * 1000
 			const result = await Promise.race([
-				window.electronAPI.executeCommand(args.command, args.cwd),
+				window.electronAPI.executeCommand(command, cwd),
 				new Promise<never>((_, reject) =>
-					setTimeout(() => reject(new Error(`Command timed out after ${args.timeout || 30}s`)), timeout)
+					setTimeout(() => reject(new Error(`Command timed out after ${timeoutSec}s`)), timeout)
 				),
 			])
 
-			let output = `$ ${args.command}\n`
-			if (args.cwd) output += `(cwd: ${args.cwd})\n`
+			let output = `$ ${command}\n`
+			if (cwd) output += `(cwd: ${cwd})\n`
 			output += `Exit code: ${result.exitCode}\n\n`
 
 			if (result.output) output += result.output
@@ -646,24 +690,29 @@ export async function executeToolCall(
 		}
 
 		case 'open_terminal': {
-			const terminal = await terminalService.openTerminal(args.name, args.cwd)
-			return `✅ Opened terminal "${args.name}"\nTerminal ID: ${terminal.id}\nWorking directory: ${terminal.cwd}`
+			const termName = getString('name')
+			const termCwd = args.cwd as string | undefined
+			const terminal = await terminalService.openTerminal(termName, termCwd)
+			return `✅ Opened terminal "${termName}"\nTerminal ID: ${terminal.id}\nWorking directory: ${terminal.cwd}`
 		}
 
 		case 'run_in_terminal': {
-			const wait = args.wait !== undefined ? args.wait : false
-			const result = await terminalService.runCommand(args.terminal_id, args.command, wait)
+			const terminalId = getString('terminal_id')
+			const termCommand = getString('command')
+			const wait = args.wait !== undefined ? getBoolean('wait') : false
+			const result = await terminalService.runCommand(terminalId, termCommand, wait)
 
 			if (result.isComplete) {
-				return `$ ${args.command}\nExit code: ${result.exitCode}\n\n${result.output}`
+				return `$ ${termCommand}\nExit code: ${result.exitCode}\n\n${result.output}`
 			} else {
-				return `$ ${args.command}\nCommand started in background. Use get_terminal_output to check progress.`
+				return `$ ${termCommand}\nCommand started in background. Use get_terminal_output to check progress.`
 			}
 		}
 
 		case 'get_terminal_output': {
-			const lines = args.lines || 50
-			const output = terminalService.getOutput(args.terminal_id, lines)
+			const termId = getString('terminal_id')
+			const outputLines = getNumber('lines', 50)
+			const output = terminalService.getOutput(termId, outputLines)
 
 			if (output.length === 0) {
 				return '(No output yet)'
@@ -693,7 +742,9 @@ export async function executeToolCall(
 
 		// ===== Lint =====
 		case 'get_lint_errors': {
-			const errors = await lintService.getLintErrors(args.path, args.refresh)
+			const lintPath = resolvePath(getString('path'))
+			const refresh = getBoolean('refresh')
+			const errors = await lintService.getLintErrors(lintPath, refresh)
 			return lintService.formatErrors(errors)
 		}
 

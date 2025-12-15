@@ -95,7 +95,17 @@ export class OpenAIProvider extends BaseProvider {
 			let currentToolCall: { id?: string; name?: string; argsString: string } | null = null
 
 			for await (const chunk of stream) {
-				const delta = chunk.choices[0]?.delta as any
+				// Extended delta type to support reasoning field from OpenRouter and similar APIs
+				interface ExtendedDelta {
+					content?: string
+					reasoning?: string
+					tool_calls?: Array<{
+						index?: number
+						id?: string
+						function?: { name?: string; arguments?: string }
+					}>
+				}
+				const delta = chunk.choices[0]?.delta as ExtendedDelta | undefined
 
 				// 处理文本内容
 				if (delta?.content) {
@@ -161,7 +171,7 @@ export class OpenAIProvider extends BaseProvider {
 				toolCalls: toolCalls.length > 0 ? toolCalls : undefined
 			})
 
-		} catch (error: any) {
+		} catch (error: unknown) {
 			const llmError = this.parseError(error)
 			this.log('error', 'Chat failed', { code: llmError.code, message: llmError.message })
 			onError(llmError)

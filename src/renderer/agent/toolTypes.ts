@@ -31,7 +31,7 @@ export interface ToolDefinition {
 export interface ToolCallRequest {
 	id: string
 	name: string
-	arguments: Record<string, any>
+	arguments: Record<string, unknown>
 	status: ToolStatus
 	result?: string
 	error?: string
