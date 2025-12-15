@@ -1,260 +1,31 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
-  Send, Bot, Sparkles,
-  Trash2, StopCircle, Terminal, FileEdit, Search,
-  FolderOpen, FileText, Check, X, AlertTriangle,
-  FolderTree, History, Loader2, ChevronDown
+  Send, Sparkles,
+  Trash2, StopCircle,
+  FileText, AlertTriangle,
+  History
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { useStore, Message, ToolCall } from '../store'
+import { useStore, Message } from '../store'
 import { useAgent } from '../hooks/useAgent'
 
-import ToolResultViewer from './ToolResultViewer'
+import ToolCallCard from './ToolCallCard'
 import SessionList from './SessionList'
 import FileMentionPopup from './FileMentionPopup'
 import { sessionService } from '../agent/sessionService'
-import DiffViewer from './DiffViewer'
-import { parseSearchReplaceBlocks, applySearchReplaceBlocks } from '../agent/tools'
+import { checkpointService } from '../agent/checkpointService'
 
-const ToolIcon = ({ name }: { name: string }) => {
-  const icons: Record<string, typeof Terminal> = {
-    read_file: FileText,
-    write_file: FileEdit,
-    edit_file: FileEdit,
-    search_files: Search,
-    search_in_file: Search,
-    list_directory: FolderOpen,
-    get_dir_tree: FolderTree,
-    create_file_or_folder: FolderOpen,
-    delete_file_or_folder: Trash2,
-    run_command: Terminal,
-    open_terminal: Terminal,
-    run_in_terminal: Terminal,
-    get_terminal_output: Terminal,
-    list_terminals: Terminal,
-    get_lint_errors: AlertTriangle,
-  }
-  const Icon = icons[name] || Terminal
-  return <Icon className="w-3.5 h-3.5" />
-}
-
-function ToolCallDisplay({
-  toolCall,
-  onApprove,
-  onReject,
-}: {
-  toolCall: ToolCall
-  onApprove?: () => void
-  onReject?: () => void
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const isAwaiting = toolCall.status === 'awaiting_user'
-  const { workspacePath } = useStore()
-  
-  // Preview state
-  const [previewData, setPreviewData] = useState<{ original: string, modified: string, path: string } | null>(null)
-  const [isPreviewLoading, setIsPreviewLoading] = useState(false)
-
-  // Auto-expand if awaiting approval
-  useEffect(() => {
-    if (isAwaiting) setExpanded(true)
-  }, [isAwaiting])
-
-  // Load preview data for edit/write operations
-  useEffect(() => {
-    const loadPreview = async () => {
-      if (toolCall.name !== 'edit_file' && toolCall.name !== 'write_file') return
-      
-      const args = toolCall.arguments as any
-      const relPath = args.path
-      if (!relPath) return
-
-      // Simple path resolution
-      let fullPath = relPath
-      if (workspacePath && !relPath.startsWith('/') && !relPath.match(/^[a-zA-Z]:/)) {
-        const sep = workspacePath.includes('\\') ? '\\' : '/'
-        fullPath = `${workspacePath}${sep}${relPath}`
-      }
-
-      setIsPreviewLoading(true)
-      try {
-        // Read original file (might fail if new file, handle gracefully)
-        const originalContent = await window.electronAPI.readFile(fullPath) || ''
-        
-        let modifiedContent = ''
-        if (toolCall.name === 'write_file') {
-          modifiedContent = args.content || ''
-        } else if (toolCall.name === 'edit_file') {
-          const blocks = parseSearchReplaceBlocks(args.search_replace_blocks || '')
-          const result = applySearchReplaceBlocks(originalContent, blocks)
-          modifiedContent = result.newContent
-        }
-
-        setPreviewData({
-          original: originalContent,
-          modified: modifiedContent,
-          path: fullPath
-        })
-      } catch (e) {
-        console.error('Failed to load preview:', e)
-      } finally {
-        setIsPreviewLoading(false)
-      }
-    }
-
-    if (expanded && !previewData && (toolCall.name === 'edit_file' || toolCall.name === 'write_file')) {
-      loadPreview()
-    }
-  }, [expanded, toolCall, workspacePath, previewData])
-
-
-  const getStatusColor = () => {
-    switch (toolCall.status) {
-        case 'success': return 'text-status-success'
-        case 'error': return 'text-status-error'
-        case 'awaiting_user': return 'text-warning'
-        case 'running': return 'text-accent'
-        default: return 'text-text-muted'
-    }
-  }
-
-  return (
-    <div className={`
-        group my-2 border rounded-lg transition-all duration-200 overflow-hidden
-        ${expanded 
-            ? 'bg-surface/40 border-border-subtle shadow-sm' 
-            : 'bg-transparent border-transparent hover:bg-surface/20'
-        }
-    `}>
-      {/* Minimized / Header View */}
-      <div 
-        className={`
-            flex items-center gap-2 px-3 py-2 cursor-pointer select-none
-            text-xs font-mono transition-colors
-            ${expanded ? 'border-b border-border-subtle/50' : ''}
-        `}
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className={`flex items-center justify-center w-5 h-5 rounded ${getStatusColor()} bg-opacity-10`}>
-            {toolCall.status === 'running' ? (
-                <Loader2 className="w-3 h-3 animate-spin" />
-            ) : (
-                <ToolIcon name={toolCall.name} />
-            )}
-        </div>
-
-        <div className="flex-1 flex items-center gap-2 min-w-0">
-            <span className={`font-medium ${getStatusColor()}`}>
-                {toolCall.name}
-            </span>
-            {!expanded && (
-                <span className="text-text-muted truncate opacity-50 text-[10px]">
-                    {JSON.stringify(toolCall.arguments)}
-                </span>
-            )}
-        </div>
-
-        <div className="flex items-center gap-2 text-text-muted">
-             {toolCall.status === 'success' && <Check className="w-3 h-3" />}
-             {toolCall.status === 'error' && <X className="w-3 h-3" />}
-             {isAwaiting && <span className="text-[10px] bg-warning/10 text-warning px-1.5 py-0.5 rounded animate-pulse">Approval Needed</span>}
-             <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-        </div>
-      </div>
-
-      {/* Expanded Details */}
-      {expanded && (
-          <div className="p-3 bg-black/20 text-xs">
-            {/* Diff Preview for Edits */}
-            {previewData ? (
-                <div className="mb-3">
-                   <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Preview</span>
-                   </div>
-                   <DiffViewer 
-                      originalContent={previewData.original}
-                      modifiedContent={previewData.modified}
-                      filePath={previewData.path}
-                      onAccept={() => {}} // Controlled by outer buttons
-                      onReject={() => {}} // Controlled by outer buttons
-                   />
-                </div>
-            ) : (
-                /* Standard Arguments View */
-                <div className="mb-3">
-                    <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold">Params</span>
-                        {isPreviewLoading && <Loader2 className="w-3 h-3 animate-spin text-text-muted" />}
-                    </div>
-                    <pre className="font-mono text-text-secondary bg-black/30 p-2 rounded overflow-x-auto border border-white/5 custom-scrollbar">
-                        {JSON.stringify(toolCall.arguments, null, 2)}
-                    </pre>
-                </div>
-            )}
-
-            {/* Approval Actions */}
-            {isAwaiting && onApprove && onReject && (
-                <div className="flex items-center justify-between gap-3 bg-warning/5 p-3 rounded border border-warning/10 mb-3">
-                    <div className="flex items-center gap-2">
-                         <AlertTriangle className="w-4 h-4 text-warning" />
-                         <span className="text-warning font-medium">Allow execution?</span>
-                    </div>
-                    <div className="flex gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); onReject() }} 
-                            className="px-3 py-1.5 rounded bg-surface hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors">
-                            Deny
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); onApprove() }} 
-                            className="px-3 py-1.5 rounded bg-accent text-white hover:bg-accent-hover shadow-glow transition-all font-medium">
-                            Allow
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Result */}
-            {(toolCall.result || toolCall.error) && (
-                <div className="animate-fade-in">
-                     <span className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-1.5 block">Output</span>
-                     <ToolResultViewer toolName={toolCall.name} result={toolCall.result || ''} error={toolCall.error} />
-                </div>
-            )}
-          </div>
-      )}
-    </div>
-  )
-}
 
 function ChatMessage({ message }: { message: Message }) {
   const isUser = message.role === 'user'
-  const [showToolOutput, setShowToolOutput] = useState(false)
 
-  // Special handling for tool outputs: Collapse them by default
+  // Requirements 1.6, 3.2: Tool outputs are now embedded within ToolCallCard
+  // Hide separate tool messages to avoid duplication
   if (message.role === 'tool') {
-      return (
-          <div className="px-4 py-2 group">
-              <div 
-                onClick={() => setShowToolOutput(!showToolOutput)}
-                className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-surface-hover transition-colors border border-transparent hover:border-border-subtle"
-              >
-                  <div className="w-5 h-5 rounded bg-surface-active flex items-center justify-center text-text-muted">
-                      <Terminal className="w-3 h-3" />
-                  </div>
-                  <span className="text-xs text-text-muted font-medium flex-1">
-                      Tool Output <span className="opacity-50">({message.content.length} chars)</span>
-                  </span>
-                  <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${showToolOutput ? 'rotate-180' : ''}`} />
-              </div>
-              
-              {showToolOutput && (
-                  <div className="mt-2 ml-2 pl-4 border-l-2 border-border-subtle">
-                      <ToolResultViewer toolName={message.toolName || 'Tool'} result={message.content} />
-                  </div>
-              )}
-          </div>
-      )
+      // Return null to hide tool messages - results are shown inline in ToolCallCard
+      return null
   }
 
   return (
@@ -287,10 +58,16 @@ function ChatMessage({ message }: { message: Message }) {
             <ReactMarkdown
               className="prose prose-invert prose-sm max-w-none break-words"
               components={{
-                code({ className, children, ...props }) {
+                code({ className, children, node, ...props }) {
                   const match = /language-(\w+)/.exec(className || '')
-                  const inline = !match
-                  return inline ? (
+                  // 检查是否是真正的代码块（有语言标识或者是 pre 的子元素）
+                  const isCodeBlock = match || (node?.position?.start?.line !== node?.position?.end?.line)
+                  // 检查内容是否像代码（包含特殊字符）
+                  const content = String(children)
+                  const looksLikeCode = /[{}()[\];=<>]/.test(content) || content.includes('\n')
+                  const isInline = !isCodeBlock && !looksLikeCode
+                  
+                  return isInline ? (
                     <code className="bg-surface-active/50 border border-white/5 px-1.5 py-0.5 rounded text-accent font-mono text-xs" {...props}>
                       {children}
                     </code>
@@ -336,7 +113,7 @@ export default function ChatPanel() {
   const {
     chatMode, setChatMode, messages, isStreaming, currentToolCalls,
     clearMessages, llmConfig, pendingToolCall,
-    setCurrentSessionId, addMessage
+    setCurrentSessionId, addMessage, workspacePath, openFile, setActiveFile
   } = useStore()
   const {
     sendMessage,
@@ -344,6 +121,76 @@ export default function ChatPanel() {
     approveCurrentTool,
     rejectCurrentTool,
   } = useAgent()
+
+  // 处理工具调用中的文件点击 - 打开文件并显示 diff
+  // Requirements: 1.2, 1.3 - 点击文件名打开文件并显示 diff
+  const handleToolFileClick = useCallback(async (filePath: string) => {
+    // 解析完整路径
+    let fullPath = filePath
+    if (workspacePath && !filePath.startsWith('/') && !filePath.match(/^[a-zA-Z]:/)) {
+      const sep = workspacePath.includes('\\') ? '\\' : '/'
+      fullPath = `${workspacePath}${sep}${filePath}`
+    }
+    
+    // 读取当前文件内容
+    const currentContent = await window.electronAPI.readFile(fullPath)
+    if (currentContent === null) {
+      console.warn('[ToolFileClick] Failed to read file:', fullPath)
+      return
+    }
+    
+    // 从 checkpointService 获取检查点（这是实际存储快照的地方）
+    const serviceCheckpoints = checkpointService.getCheckpoints()
+    // 同时也检查 store 中的检查点
+    const { checkpoints: storeCheckpoints } = useStore.getState()
+    const allCheckpoints = [...serviceCheckpoints, ...storeCheckpoints]
+    
+    console.log('[ToolFileClick] Looking for file:', filePath, 'fullPath:', fullPath)
+    console.log('[ToolFileClick] Total checkpoints:', allCheckpoints.length)
+    
+    let originalContent: string | undefined
+    
+    // 规范化路径函数
+    const normalizePath = (p: string) => p.replace(/\\/g, '/').toLowerCase()
+    const normalizedFullPath = normalizePath(fullPath)
+    const normalizedFilePath = normalizePath(filePath)
+    
+    // 从最新的检查点开始查找
+    for (let i = allCheckpoints.length - 1; i >= 0; i--) {
+      const checkpoint = allCheckpoints[i]
+      if (!checkpoint.snapshots) continue
+      
+      const snapshotPaths = Object.keys(checkpoint.snapshots)
+      console.log('[ToolFileClick] Checkpoint', i, 'has snapshots:', snapshotPaths)
+      
+      for (const snapshotPath of snapshotPaths) {
+        const normalizedSnapshotPath = normalizePath(snapshotPath)
+        
+        // 精确匹配或路径结尾匹配
+        if (normalizedSnapshotPath === normalizedFullPath ||
+            normalizedSnapshotPath === normalizedFilePath ||
+            normalizedSnapshotPath.endsWith('/' + normalizedFilePath) ||
+            normalizedFullPath.endsWith('/' + normalizePath(snapshotPath.split(/[/\\]/).pop() || ''))) {
+          originalContent = checkpoint.snapshots[snapshotPath].content
+          console.log('[ToolFileClick] Found match! snapshotPath:', snapshotPath)
+          break
+        }
+      }
+      if (originalContent) break
+    }
+    
+    console.log('[ToolFileClick] Original content found:', !!originalContent)
+    console.log('[ToolFileClick] Content differs:', originalContent !== currentContent)
+    
+    // 如果找到原始内容且与当前内容不同，显示 diff 视图
+    if (originalContent && originalContent !== currentContent) {
+      openFile(fullPath, currentContent, originalContent)
+    } else {
+      // 否则正常打开文件
+      openFile(fullPath, currentContent)
+    }
+    setActiveFile(fullPath)
+  }, [workspacePath, openFile, setActiveFile])
   const [input, setInput] = useState('')
   const [showSessions, setShowSessions] = useState(false)
   const [showFileMention, setShowFileMention] = useState(false)
@@ -597,15 +444,16 @@ export default function ChatPanel() {
             ))}
         </div>
 
-        {/* Current Tool Calls Area */}
+        {/* Current Tool Calls Area - 使用新的 ToolCallCard */}
         {currentToolCalls.length > 0 && (
-            <div className="px-4 py-2 animate-fade-in">
+            <div className="px-4 py-2 space-y-1.5 animate-fade-in">
                 {currentToolCalls.map((toolCall) => (
-                    <ToolCallDisplay
-                    key={toolCall.id}
-                    toolCall={toolCall}
-                    onApprove={pendingToolCall?.id === toolCall.id ? approveCurrentTool : undefined}
-                    onReject={pendingToolCall?.id === toolCall.id ? rejectCurrentTool : undefined}
+                    <ToolCallCard
+                      key={toolCall.id}
+                      toolCall={toolCall}
+                      onApprove={pendingToolCall?.id === toolCall.id ? approveCurrentTool : undefined}
+                      onReject={pendingToolCall?.id === toolCall.id ? rejectCurrentTool : undefined}
+                      onFileClick={handleToolFileClick}
                     />
                 ))}
             </div>

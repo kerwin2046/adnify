@@ -112,13 +112,13 @@ export function useAgent() {
 		// Agent 循环
 		let shouldContinue = true
 		let loopCount = 0
+		
+		// 创建一条助手消息，整个对话过程中复用这条消息
+		addMessage({ role: 'assistant', content: '', isStreaming: true })
 
 		while (shouldContinue && loopCount < MAX_TOOL_LOOPS && !abortRef.current) {
 			loopCount++
 			shouldContinue = false
-
-			// Add placeholder to indicate activity
-			addMessage({ role: 'assistant', content: 'Thinking...', isStreaming: true })
 
 			// 获取工具（仅 agent 模式）
 			const tools = chatMode === 'agent' ? getTools() : undefined
@@ -142,18 +142,8 @@ export function useAgent() {
 				onStream: (chunk) => {
 					if (chunk.type === 'text' && chunk.content) {
                         const state = useStore.getState()
-                        const lastMsg = state.messages.at(-1)
-                        
-                        if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.toolCallId) {
-                            // If it's the placeholder, replace it. Otherwise append.
-                            if (lastMsg.content === 'Thinking...') {
-                                state.updateLastMessage(chunk.content)
-                            } else {
-                                state.appendTokenToLastMessage(chunk.content)
-                            }
-                        } else {
-                             state.addMessage({ role: 'assistant', content: chunk.content, isStreaming: true })
-                        }
+                        // 直接追加到最后一条助手消息
+                        state.appendTokenToLastMessage(chunk.content)
 					}
 				},
 				onToolCall: (toolCall) => {
@@ -170,15 +160,11 @@ export function useAgent() {
 			// 处理错误
 			if (result.error) {
 				const errorMessage = result.error.retryable
-					? `❌ ${result.error.message}\n\nThis error may be temporary. Please try again.`
-					: `❌ ${result.error.message}`
+					? `\n\n❌ ${result.error.message}\n\nThis error may be temporary. Please try again.`
+					: `\n\n❌ ${result.error.message}`
 
-                const lastMsg = useStore.getState().messages.at(-1)
-                if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.toolCallId) {
-				    updateLastMessage(errorMessage)
-                } else {
-                    addMessage({ role: 'assistant', content: errorMessage })
-                }
+                const state = useStore.getState()
+                state.appendTokenToLastMessage(errorMessage)
 				setIsStreaming(false)
                 finalizeLastMessage()
 				return
@@ -188,37 +174,40 @@ export function useAgent() {
             const finalContent = result.data?.content || ''
             if (finalContent) {
                 const lastMsg = useStore.getState().messages.at(-1)
-                // 如果最后一条不是助手消息，或者它是工具调用输出，说明我们需要添加助手的新消息
-                if (!lastMsg || lastMsg.role !== 'assistant' || lastMsg.toolCallId) {
-                    addMessage({ role: 'assistant', content: finalContent })
-                } else if (lastMsg.content.length < finalContent.length) {
-                    // 如果流式传输不完整，用最终结果覆盖
-                    updateLastMessage(finalContent)
+                if (lastMsg && lastMsg.role === 'assistant' && !lastMsg.toolCallId) {
+                    // 如果流式传输不完整，追加缺失的内容
+                    if (!lastMsg.content.includes(finalContent)) {
+                        const state = useStore.getState()
+                        if (lastMsg.content.length === 0) {
+                            state.updateLastMessage(finalContent)
+                        }
+                    }
                 }
             }
 
-			// 更新对话历史
+			// 更新对话历史（用于下一轮 LLM 调用）
 			const assistantContent = useStore.getState().messages.at(-1)?.content || ''
-			conversationMessages.push({
-				role: 'assistant' as const,
-				content: assistantContent,
-				toolCallId: undefined,
-				toolName: undefined,
-			})
+			if (assistantContent) {
+				conversationMessages.push({
+					role: 'assistant' as const,
+					content: assistantContent,
+					toolCallId: undefined,
+					toolName: undefined,
+				})
+			}
 
 			// 处理工具调用
 			if (result.data?.toolCalls && result.data.toolCalls.length > 0 && chatMode === 'agent') {
 				for (const toolCall of result.data.toolCalls) {
 					if (abortRef.current) break
 
-					shouldContinue = await processToolCall(
+					shouldContinue = await processToolCallSilent(
 						toolCall,
 						conversationMessages,
 						autoApprove,
                         workspacePath,
 						waitForApproval,
 						updateToolCall,
-						addMessage,
 						addCheckpoint
 					)
 				}
@@ -392,13 +381,6 @@ async function sendToLLM(params: {
 	})
 }
 
-interface MessageToAdd {
-	role: 'user' | 'assistant' | 'tool'
-	content: string
-	toolCallId?: string
-	toolName?: string
-}
-
 interface CheckpointToAdd {
 	id: string
 	type: 'user_message' | 'tool_edit'
@@ -408,16 +390,16 @@ interface CheckpointToAdd {
 }
 
 /**
- * 处理单个工具调用
+ * 处理单个工具调用（静默模式 - 不添加 tool 消息到 UI）
+ * 工具结果在 ToolCallCard 中内联显示
  */
-async function processToolCall(
+async function processToolCallSilent(
 	toolCall: LLMToolCall,
 	conversationMessages: LLMMessageForSend[],
 	autoApprove: { edits: boolean; terminal: boolean; dangerous: boolean },
     workspacePath: string | null,
 	waitForApproval: (tc: ToolCall) => Promise<boolean>,
 	updateToolCall: (id: string, updates: Partial<ToolCall>) => void,
-	addMessage: (msg: MessageToAdd) => void,
 	addCheckpoint: (cp: CheckpointToAdd) => void
 ): Promise<boolean> {
 	const approvalType = getToolApprovalType(toolCall.name)
@@ -441,13 +423,7 @@ async function processToolCall(
 				error: 'Rejected by user'
 			})
 
-			addMessage({
-				role: 'tool',
-				content: '❌ Tool call rejected by user',
-				toolCallId: toolCall.id,
-				toolName: toolCall.name,
-			})
-
+			// 只添加到对话历史，不添加到 UI
 			conversationMessages.push({
 				role: 'tool',
 				content: 'Tool call was rejected by the user.',
@@ -464,10 +440,18 @@ async function processToolCall(
 
 	// 编辑类工具创建检查点
 	if (approvalType === 'edits' && toolCall.arguments.path) {
+		// 解析完整路径以确保检查点能正确读取文件
+		const relativePath = toolCall.arguments.path as string
+		let fullPath = relativePath
+		if (workspacePath && !relativePath.startsWith('/') && !relativePath.match(/^[a-zA-Z]:/)) {
+			const sep = workspacePath.includes('\\') ? '\\' : '/'
+			fullPath = `${workspacePath}${sep}${relativePath}`
+		}
+		
 		const checkpoint = await checkpointService.createCheckpoint(
 			'tool_edit',
-			`Before ${toolCall.name}: ${toolCall.arguments.path}`,
-			[toolCall.arguments.path]
+			`Before ${toolCall.name}: ${relativePath}`,
+			[fullPath]  // 使用完整路径创建快照
 		)
 		addCheckpoint(checkpoint)
 	}
@@ -481,14 +465,7 @@ async function processToolCall(
 			result: resultStr
 		})
 
-		addMessage({
-			role: 'tool',
-			content: resultStr,
-			toolCallId: toolCall.id,
-			toolName: toolCall.name,
-		})
-
-		// 添加到对话历史
+		// 添加到对话历史（用于 LLM 上下文）
 		conversationMessages.push({
 			role: 'assistant',
 			content: JSON.stringify(toolCall.arguments),
@@ -509,13 +486,6 @@ async function processToolCall(
 		updateToolCall(toolCall.id, {
 			status: 'error' as ToolStatus,
 			error: err.message
-		})
-
-		addMessage({
-			role: 'tool',
-			content: `❌ Error: ${err.message}`,
-			toolCallId: toolCall.id,
-			toolName: toolCall.name,
 		})
 
 		conversationMessages.push({
