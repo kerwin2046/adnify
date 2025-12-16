@@ -248,3 +248,227 @@ export function onDiagnostics(
     callback(params.uri, params.diagnostics)
   })
 }
+
+/**
+ * 跳转到类型定义
+ */
+export async function goToTypeDefinition(
+  filePath: string,
+  line: number,
+  character: number
+): Promise<{ uri: string; range: any }[] | null> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    const result = await window.electronAPI.lspTypeDefinition({ uri, line, character })
+    if (!result) return null
+    return Array.isArray(result) ? result : [result]
+  } catch (error) {
+    console.error('[LSP Client] Type definition error:', error)
+    return null
+  }
+}
+
+/**
+ * 跳转到实现
+ */
+export async function goToImplementation(
+  filePath: string,
+  line: number,
+  character: number
+): Promise<{ uri: string; range: any }[] | null> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    const result = await window.electronAPI.lspImplementation({ uri, line, character })
+    if (!result) return null
+    return Array.isArray(result) ? result : [result]
+  } catch (error) {
+    console.error('[LSP Client] Implementation error:', error)
+    return null
+  }
+}
+
+/**
+ * 获取签名帮助
+ */
+export async function getSignatureHelp(
+  filePath: string,
+  line: number,
+  character: number
+): Promise<any> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    return await window.electronAPI.lspSignatureHelp({ uri, line, character })
+  } catch (error) {
+    console.error('[LSP Client] Signature help error:', error)
+    return null
+  }
+}
+
+/**
+ * 准备重命名（获取当前符号信息）
+ */
+export async function prepareRename(
+  filePath: string,
+  line: number,
+  character: number
+): Promise<{ range: any; placeholder: string } | null> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    return await window.electronAPI.lspPrepareRename({ uri, line, character })
+  } catch (error) {
+    console.error('[LSP Client] Prepare rename error:', error)
+    return null
+  }
+}
+
+/**
+ * 获取文档符号（大纲）
+ */
+export async function getDocumentSymbols(filePath: string): Promise<any[]> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    const result = await window.electronAPI.lspDocumentSymbol({ uri })
+    return result || []
+  } catch (error) {
+    console.error('[LSP Client] Document symbol error:', error)
+    return []
+  }
+}
+
+/**
+ * 搜索工作区符号
+ */
+export async function searchWorkspaceSymbols(query: string): Promise<any[]> {
+  try {
+    const result = await window.electronAPI.lspWorkspaceSymbol({ query })
+    return result || []
+  } catch (error) {
+    console.error('[LSP Client] Workspace symbol error:', error)
+    return []
+  }
+}
+
+/**
+ * 获取代码操作（快速修复、重构等）
+ */
+export async function getCodeActions(
+  filePath: string,
+  range: { start: { line: number; character: number }; end: { line: number; character: number } },
+  diagnostics?: any[]
+): Promise<any[]> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    const result = await window.electronAPI.lspCodeAction({ uri, range, diagnostics })
+    return result || []
+  } catch (error) {
+    console.error('[LSP Client] Code action error:', error)
+    return []
+  }
+}
+
+/**
+ * 格式化文档
+ */
+export async function formatDocument(
+  filePath: string,
+  options?: { tabSize?: number; insertSpaces?: boolean }
+): Promise<any[]> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    const result = await window.electronAPI.lspFormatting({ uri, options })
+    return result || []
+  } catch (error) {
+    console.error('[LSP Client] Formatting error:', error)
+    return []
+  }
+}
+
+/**
+ * 格式化选区
+ */
+export async function formatRange(
+  filePath: string,
+  range: { start: { line: number; character: number }; end: { line: number; character: number } },
+  options?: { tabSize?: number; insertSpaces?: boolean }
+): Promise<any[]> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    const result = await window.electronAPI.lspRangeFormatting({ uri, range, options })
+    return result || []
+  } catch (error) {
+    console.error('[LSP Client] Range formatting error:', error)
+    return []
+  }
+}
+
+/**
+ * 获取文档高亮（相同符号高亮）
+ */
+export async function getDocumentHighlights(
+  filePath: string,
+  line: number,
+  character: number
+): Promise<any[]> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    const result = await window.electronAPI.lspDocumentHighlight({ uri, line, character })
+    return result || []
+  } catch (error) {
+    console.error('[LSP Client] Document highlight error:', error)
+    return []
+  }
+}
+
+/**
+ * 获取折叠范围
+ */
+export async function getFoldingRanges(filePath: string): Promise<any[]> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    const result = await window.electronAPI.lspFoldingRange({ uri })
+    return result || []
+  } catch (error) {
+    console.error('[LSP Client] Folding range error:', error)
+    return []
+  }
+}
+
+/**
+ * 解析补全项（获取详细信息）
+ */
+export async function resolveCompletionItem(item: any): Promise<any> {
+  try {
+    return await window.electronAPI.lspCompletionResolve(item)
+  } catch (error) {
+    console.error('[LSP Client] Completion resolve error:', error)
+    return item
+  }
+}
+
+/**
+ * 获取内联提示
+ */
+export async function getInlayHints(
+  filePath: string,
+  range: { start: { line: number; character: number }; end: { line: number; character: number } }
+): Promise<any[]> {
+  const uri = pathToLspUri(filePath)
+  
+  try {
+    const result = await window.electronAPI.lspInlayHint({ uri, range })
+    return result || []
+  } catch (error) {
+    console.error('[LSP Client] Inlay hint error:', error)
+    return []
+  }
+}

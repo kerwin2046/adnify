@@ -19,7 +19,10 @@ import {
   didChangeDocument,
   goToDefinition,
   lspUriToPath,
+  onDiagnostics,
 } from '../services/lspService'
+import { registerLspProviders } from '../services/lspProviders'
+import { getFileInfo, getLargeFileEditorOptions, getLargeFileWarning } from '../services/largeFileService'
 // 导入 Monaco worker 配置
 import { monaco } from '../monacoWorker'
 // 导入编辑器配置
@@ -128,10 +131,16 @@ export default function Editor() {
 
   const activeFile = openFiles.find(f => f.path === activeFilePath)
   const activeLanguage = activeFile ? getLanguage(activeFile.path) : 'plaintext'
+  
+  // 检测大文件
+  const activeFileInfo = activeFile ? getFileInfo(activeFile.path, activeFile.content) : null
 
   const handleEditorMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
+
+    // 注册所有 LSP 提供者（hover、completion、signature help 等）
+    registerLspProviders(monaco)
 
     // 启动 LSP 服务器（异步）
     const { workspacePath } = useStore.getState()
@@ -149,6 +158,32 @@ export default function Editor() {
         }
       })
     }
+
+    // 监听 LSP 诊断信息
+    const unsubscribeDiagnostics = onDiagnostics((uri, diagnostics) => {
+      const model = monaco.editor.getModels().find(m => m.uri.toString() === uri)
+      if (model) {
+        const markers = diagnostics.map(d => ({
+          severity: d.severity === 1 ? monaco.MarkerSeverity.Error
+            : d.severity === 2 ? monaco.MarkerSeverity.Warning
+            : d.severity === 3 ? monaco.MarkerSeverity.Info
+            : monaco.MarkerSeverity.Hint,
+          message: d.message,
+          startLineNumber: d.range.start.line + 1,
+          startColumn: d.range.start.character + 1,
+          endLineNumber: d.range.end.line + 1,
+          endColumn: d.range.end.character + 1,
+          source: d.source,
+          code: d.code?.toString(),
+        }))
+        monaco.editor.setModelMarkers(model, 'lsp', markers)
+      }
+    })
+
+    // 清理函数
+    editor.onDidDispose(() => {
+      unsubscribeDiagnostics()
+    })
 
     // 注册定义提供者 - 使用 LSP 实现跳转到定义
     monaco.languages.registerDefinitionProvider(
@@ -702,7 +737,7 @@ export default function Editor() {
       {/* Breadcrumbs */}
       {activeFile && (
           <div className="h-6 flex items-center px-4 bg-background border-b border-border-subtle/50 text-[11px] text-text-muted select-none">
-              <div className="flex items-center gap-1 opacity-70">
+              <div className="flex items-center gap-1 opacity-70 flex-1">
                   <Home className="w-3 h-3" />
                   <span className="mx-1 opacity-30">/</span>
                   {getBreadcrumbs(activeFile.path).map((part, i, arr) => (
@@ -712,6 +747,13 @@ export default function Editor() {
                       </div>
                   ))}
               </div>
+              {/* 大文件警告 */}
+              {activeFileInfo?.isLarge && (
+                <div className="flex items-center gap-1 text-status-warning">
+                  <AlertTriangle className="w-3 h-3" />
+                  <span>{getLargeFileWarning(activeFileInfo, language)}</span>
+                </div>
+              )}
           </div>
       )}
 
@@ -872,6 +914,8 @@ export default function Editor() {
               },
               // 禁用 Monaco 内置右键菜单，使用自定义国际化菜单
               contextmenu: false,
+              // 大文件优化
+              ...(activeFileInfo ? getLargeFileEditorOptions(activeFileInfo) : {}),
             }}
           />
           )

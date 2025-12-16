@@ -162,10 +162,23 @@ export interface ElectronAPI {
 	lspDidChange: (params: { uri: string; version: number; text: string }) => Promise<void>
 	lspDidClose: (params: { uri: string }) => Promise<void>
 	lspDefinition: (params: { uri: string; line: number; character: number }) => Promise<LspLocation[] | null>
+	lspTypeDefinition: (params: { uri: string; line: number; character: number }) => Promise<LspLocation[] | null>
+	lspImplementation: (params: { uri: string; line: number; character: number }) => Promise<LspLocation[] | null>
 	lspReferences: (params: { uri: string; line: number; character: number }) => Promise<LspLocation[] | null>
 	lspHover: (params: { uri: string; line: number; character: number }) => Promise<LspHover | null>
 	lspCompletion: (params: { uri: string; line: number; character: number }) => Promise<LspCompletionList | null>
+	lspCompletionResolve: (item: LspCompletionItem) => Promise<LspCompletionItem>
+	lspSignatureHelp: (params: { uri: string; line: number; character: number }) => Promise<LspSignatureHelp | null>
 	lspRename: (params: { uri: string; line: number; character: number; newName: string }) => Promise<LspWorkspaceEdit | null>
+	lspPrepareRename: (params: { uri: string; line: number; character: number }) => Promise<LspPrepareRename | null>
+	lspDocumentSymbol: (params: { uri: string }) => Promise<LspDocumentSymbol[] | null>
+	lspWorkspaceSymbol: (params: { query: string }) => Promise<LspSymbolInformation[] | null>
+	lspCodeAction: (params: { uri: string; range: LspRange; diagnostics?: LspDiagnostic[] }) => Promise<LspCodeAction[] | null>
+	lspFormatting: (params: { uri: string; options?: LspFormattingOptions }) => Promise<LspTextEdit[] | null>
+	lspRangeFormatting: (params: { uri: string; range: LspRange; options?: LspFormattingOptions }) => Promise<LspTextEdit[] | null>
+	lspDocumentHighlight: (params: { uri: string; line: number; character: number }) => Promise<LspDocumentHighlight[] | null>
+	lspFoldingRange: (params: { uri: string }) => Promise<LspFoldingRange[] | null>
+	lspInlayHint: (params: { uri: string; range: LspRange }) => Promise<LspInlayHint[] | null>
 	onLspDiagnostics: (callback: (params: { uri: string; diagnostics: LspDiagnostic[] }) => void) => () => void
 }
 
@@ -257,6 +270,79 @@ export interface LspDiagnostic {
 	code?: string | number
 	source?: string
 	message: string
+}
+
+export interface LspSignatureHelp {
+	signatures: LspSignatureInformation[]
+	activeSignature?: number
+	activeParameter?: number
+}
+
+export interface LspSignatureInformation {
+	label: string
+	documentation?: string | { kind: string; value: string }
+	parameters?: LspParameterInformation[]
+}
+
+export interface LspParameterInformation {
+	label: string | [number, number]
+	documentation?: string | { kind: string; value: string }
+}
+
+export interface LspPrepareRename {
+	range: LspRange
+	placeholder: string
+}
+
+export interface LspDocumentSymbol {
+	name: string
+	detail?: string
+	kind: number
+	range: LspRange
+	selectionRange: LspRange
+	children?: LspDocumentSymbol[]
+}
+
+export interface LspSymbolInformation {
+	name: string
+	kind: number
+	location: LspLocation
+	containerName?: string
+}
+
+export interface LspCodeAction {
+	title: string
+	kind?: string
+	diagnostics?: LspDiagnostic[]
+	isPreferred?: boolean
+	edit?: LspWorkspaceEdit
+	command?: { title: string; command: string; arguments?: unknown[] }
+}
+
+export interface LspFormattingOptions {
+	tabSize?: number
+	insertSpaces?: boolean
+}
+
+export interface LspDocumentHighlight {
+	range: LspRange
+	kind?: number // 1 = Text, 2 = Read, 3 = Write
+}
+
+export interface LspFoldingRange {
+	startLine: number
+	startCharacter?: number
+	endLine: number
+	endCharacter?: number
+	kind?: string
+}
+
+export interface LspInlayHint {
+	position: LspPosition
+	label: string | { value: string; tooltip?: string }[]
+	kind?: number // 1 = Type, 2 = Parameter
+	paddingLeft?: boolean
+	paddingRight?: boolean
 }
 
 declare global {

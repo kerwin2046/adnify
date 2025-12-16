@@ -221,6 +221,7 @@ export const translations = {
 
 		// Search Results
 		'searchResultsCount': '{results} results in {files} files',
+		'replaceAll': 'Replace All',
 
 		// Editor Context Menu
 		'ctxGotoDefinition': 'Go to Definition',
@@ -458,6 +459,7 @@ export const translations = {
 
 		// Search Results
 		'searchResultsCount': '在 {files} 个文件中找到 {results} 个结果',
+		'replaceAll': '全部替换',
 
 		// Editor Context Menu
 		'ctxGotoDefinition': '跳转到定义',

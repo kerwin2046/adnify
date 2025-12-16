@@ -12,6 +12,7 @@ import { useStore, LLMConfig } from '../store'
 import { t, Language } from '../i18n'
 import { BUILTIN_PROVIDERS, BuiltinProviderName, ProviderModelConfig } from '../types/provider'
 import { getEditorConfig, saveEditorConfig, EditorConfig } from '../config/editorConfig'
+import { themeManager } from '../config/themeConfig'
 
 type SettingsTab = 'provider' | 'editor' | 'agent' | 'keybindings' | 'system'
 
@@ -428,6 +429,13 @@ function EditorSettings({ settings, setSettings, language }: EditorSettingsProps
   // 获取完整配置用于显示高级选项
   const [advancedConfig, setAdvancedConfig] = useState(getEditorConfig())
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const [currentTheme, setCurrentTheme] = useState(themeManager.getCurrentTheme())
+  const allThemes = themeManager.getAllThemes()
+
+  const handleThemeChange = (themeId: string) => {
+    themeManager.setTheme(themeId)
+    setCurrentTheme(themeManager.getCurrentTheme())
+  }
 
   const handleAdvancedChange = (key: string, value: number) => {
     const newConfig = { ...advancedConfig }
@@ -444,6 +452,47 @@ function EditorSettings({ settings, setSettings, language }: EditorSettingsProps
 
   return (
     <div className="space-y-6 text-text-primary">
+      {/* 主题选择器 */}
+      <div>
+        <label className="text-sm font-medium mb-3 block">{language === 'zh' ? '主题' : 'Theme'}</label>
+        <div className="grid grid-cols-3 gap-2">
+          {allThemes.map(theme => (
+            <button
+              key={theme.id}
+              onClick={() => handleThemeChange(theme.id)}
+              className={`relative p-3 rounded-lg border text-left transition-all ${
+                currentTheme.id === theme.id
+                  ? 'border-accent bg-accent/10 shadow-sm'
+                  : 'border-border-subtle hover:border-text-muted bg-surface'
+              }`}
+            >
+              {/* 主题预览色块 */}
+              <div className="flex gap-1 mb-2">
+                <div 
+                  className="w-4 h-4 rounded" 
+                  style={{ backgroundColor: theme.colors.background }}
+                />
+                <div 
+                  className="w-4 h-4 rounded" 
+                  style={{ backgroundColor: theme.colors.accent }}
+                />
+                <div 
+                  className="w-4 h-4 rounded" 
+                  style={{ backgroundColor: theme.colors.textPrimary }}
+                />
+              </div>
+              <span className="text-xs font-medium">{theme.name}</span>
+              <span className="text-[10px] text-text-muted ml-1">({theme.type})</span>
+              {currentTheme.id === theme.id && (
+                <div className="absolute top-1 right-1">
+                  <Check className="w-3 h-3 text-accent" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '字体大小' : 'Font Size'}</label>

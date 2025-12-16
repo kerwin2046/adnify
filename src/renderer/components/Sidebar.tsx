@@ -1,15 +1,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   FolderOpen, File, ChevronRight, ChevronDown,
-  Plus, RefreshCw, FolderPlus, GitBranch, Circle,
-  Search as SearchIcon, MoreHorizontal, Trash2,
-  FileText, Sparkles, ArrowRight, Edit2, FilePlus, Loader2, Check
+  Plus, RefreshCw, FolderPlus, GitBranch,
+  MoreHorizontal, Trash2,
+  FileText, ArrowRight, Edit2, FilePlus, Loader2, Check
 } from 'lucide-react'
 import { useStore } from '../store'
 import { FileItem } from '../types/electron'
 import { t } from '../i18n'
 import { gitService, GitStatus, GitCommit } from '../agent/gitService'
-import { useAgent } from '../hooks/useAgent'
 import { getEditorConfig } from '../config/editorConfig'
 
 const getFileIcon = (name: string) => {
@@ -432,9 +431,30 @@ function SearchView() {
     const [searchResults, setSearchResults] = useState<{ path: string; line: number; text: string }[]>([])
     const [isSearching, setIsSearching] = useState(false)
     const [collapsedFiles, setCollapsedFiles] = useState<Set<string>>(new Set())
+    
+    // 搜索历史
+    const [searchHistory, setSearchHistory] = useState<string[]>(() => {
+        try {
+            const saved = localStorage.getItem('adnify-search-history')
+            return saved ? JSON.parse(saved) : []
+        } catch {
+            return []
+        }
+    })
+    const [showHistory, setShowHistory] = useState(false)
 
-    const { sendMessage } = useAgent()
-    const { setChatMode, workspacePath, openFile, setActiveFile, language } = useStore()
+    const { workspacePath, openFile, setActiveFile, language } = useStore()
+    
+    // 保存搜索历史
+    const addToHistory = useCallback((searchQuery: string) => {
+        if (!searchQuery.trim()) return
+        setSearchHistory(prev => {
+            const filtered = prev.filter(h => h !== searchQuery)
+            const newHistory = [searchQuery, ...filtered].slice(0, 20)
+            localStorage.setItem('adnify-search-history', JSON.stringify(newHistory))
+            return newHistory
+        })
+    }, [])
 
     // Group results by file
     const resultsByFile = useMemo(() => {
@@ -451,6 +471,8 @@ function SearchView() {
         
         setIsSearching(true)
         setSearchResults([])
+        addToHistory(query)
+        setShowHistory(false)
 
         try {
             if (workspacePath) {
@@ -486,6 +508,75 @@ function SearchView() {
         if (e.key === 'Enter') handleSearch()
     }
 
+    // 替换单个文件中的匹配
+    const handleReplaceInFile = async () => {
+        if (!replaceQuery || searchResults.length === 0) return
+        
+        // 获取当前选中的文件（第一个结果的文件）
+        const firstResult = searchResults[0]
+        if (!firstResult) return
+        
+        const content = await window.electronAPI.readFile(firstResult.path)
+        if (content === null) return
+        
+        let newContent = content
+        if (isRegex) {
+            try {
+                const regex = new RegExp(query, isCaseSensitive ? 'g' : 'gi')
+                newContent = content.replace(regex, replaceQuery)
+            } catch {
+                return
+            }
+        } else {
+            const flags = isCaseSensitive ? 'g' : 'gi'
+            const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+            const regex = isWholeWord 
+                ? new RegExp(`\\b${escapedQuery}\\b`, flags)
+                : new RegExp(escapedQuery, flags)
+            newContent = content.replace(regex, replaceQuery)
+        }
+        
+        if (newContent !== content) {
+            await window.electronAPI.writeFile(firstResult.path, newContent)
+            handleSearch() // 刷新搜索结果
+        }
+    }
+
+    // 替换所有文件中的匹配
+    const handleReplaceAll = async () => {
+        if (!replaceQuery || searchResults.length === 0) return
+        
+        const filePaths = [...new Set(searchResults.map(r => r.path))]
+        
+        for (const filePath of filePaths) {
+            const content = await window.electronAPI.readFile(filePath)
+            if (content === null) continue
+            
+            let newContent = content
+            if (isRegex) {
+                try {
+                    const regex = new RegExp(query, isCaseSensitive ? 'g' : 'gi')
+                    newContent = content.replace(regex, replaceQuery)
+                } catch {
+                    continue
+                }
+            } else {
+                const flags = isCaseSensitive ? 'g' : 'gi'
+                const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+                const regex = isWholeWord 
+                    ? new RegExp(`\\b${escapedQuery}\\b`, flags)
+                    : new RegExp(escapedQuery, flags)
+                newContent = content.replace(regex, replaceQuery)
+            }
+            
+            if (newContent !== content) {
+                await window.electronAPI.writeFile(filePath, newContent)
+            }
+        }
+        
+        handleSearch() // 刷新搜索结果
+    }
+
     return (
         <div className="flex flex-col h-full bg-background-secondary text-sm">
              <div className="h-10 px-3 flex items-center border-b border-border-subtle sticky top-0 z-10 bg-background-secondary">
@@ -508,9 +599,32 @@ function SearchView() {
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             onKeyDown={handleKeyDown}
+                            onFocus={() => searchHistory.length > 0 && setShowHistory(true)}
+                            onBlur={() => setTimeout(() => setShowHistory(false), 200)}
                             placeholder={t('searchPlaceholder', language)}
                             className="w-full bg-surface/50 border border-transparent rounded-md py-1.5 pl-2 pr-20 text-xs text-text-primary focus:border-accent focus:bg-surface focus:ring-1 focus:ring-accent focus:outline-none transition-all placeholder:text-text-muted/50"
                         />
+                        
+                        {/* Search History Dropdown */}
+                        {showHistory && searchHistory.length > 0 && (
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-background border border-border-subtle rounded-md shadow-lg z-20 max-h-48 overflow-y-auto animate-slide-in">
+                                <div className="px-2 py-1 text-[10px] text-text-muted font-semibold border-b border-border-subtle">
+                                    Recent Searches
+                                </div>
+                                {searchHistory.map((item, idx) => (
+                                    <div
+                                        key={idx}
+                                        onClick={() => {
+                                            setQuery(item)
+                                            setShowHistory(false)
+                                        }}
+                                        className="px-3 py-1.5 text-xs text-text-secondary hover:bg-surface-hover cursor-pointer truncate"
+                                    >
+                                        {item}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         {/* Toggles */}
                         <div className="absolute right-1 top-1 flex gap-0.5">
                              <button 
@@ -540,16 +654,29 @@ function SearchView() {
 
                 {/* Replace Input Box */}
                 {showReplace && (
-                    <div className="relative flex items-center ml-5 animate-slide-in">
+                    <div className="relative flex items-center ml-5 animate-slide-in gap-1">
                         <input 
                             type="text"
                             value={replaceQuery}
                             onChange={(e) => setReplaceQuery(e.target.value)}
                             placeholder={t('replacePlaceholder', language)}
-                            className="w-full bg-surface/50 border border-transparent rounded-md py-1.5 pl-2 pr-8 text-xs text-text-primary focus:border-accent focus:bg-surface focus:ring-1 focus:ring-accent focus:outline-none transition-all placeholder:text-text-muted/50"
+                            className="flex-1 bg-surface/50 border border-transparent rounded-md py-1.5 pl-2 pr-2 text-xs text-text-primary focus:border-accent focus:bg-surface focus:ring-1 focus:ring-accent focus:outline-none transition-all placeholder:text-text-muted/50"
                         />
-                        <button className="absolute right-1 top-1 p-0.5 hover:bg-surface-active rounded transition-colors" title={t('replace', language)}>
+                        <button 
+                            onClick={handleReplaceInFile}
+                            disabled={!replaceQuery || searchResults.length === 0}
+                            className="p-1.5 hover:bg-surface-active rounded transition-colors disabled:opacity-30" 
+                            title={t('replace', language)}
+                        >
                             <Edit2 className="w-3 h-3 text-text-muted" />
+                        </button>
+                        <button 
+                            onClick={handleReplaceAll}
+                            disabled={!replaceQuery || searchResults.length === 0}
+                            className="p-1.5 hover:bg-surface-active rounded transition-colors disabled:opacity-30" 
+                            title={t('replaceAll', language)}
+                        >
+                            <span className="text-[10px] font-bold text-text-muted">All</span>
                         </button>
                     </div>
                 )}
@@ -649,6 +776,16 @@ function GitView() {
     const [isRefreshing, setIsRefreshing] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [showCommits, setShowCommits] = useState(true)
+    
+    // 新增状态
+    const [branches, setBranches] = useState<{ name: string; current: boolean; remote: boolean }[]>([])
+    const [showBranches, setShowBranches] = useState(false)
+    const [showStash, setShowStash] = useState(false)
+    const [stashList, setStashList] = useState<{ index: number; message: string; branch: string }[]>([])
+    const [showNewBranch, setShowNewBranch] = useState(false)
+    const [newBranchName, setNewBranchName] = useState('')
+    const [isPushing, setIsPushing] = useState(false)
+    const [isPulling, setIsPulling] = useState(false)
 
     const refreshStatus = useCallback(async () => {
         if (!workspacePath) return
@@ -658,12 +795,16 @@ function GitView() {
             // Ensure workspace is set
             gitService.setWorkspace(workspacePath)
             
-            const [s, c] = await Promise.all([
+            const [s, c, b, st] = await Promise.all([
                 gitService.getStatus(),
-                gitService.getRecentCommits()
+                gitService.getRecentCommits(),
+                gitService.getBranches(),
+                gitService.getStashList()
             ])
             setStatus(s)
             setCommits(c)
+            setBranches(b)
+            setStashList(st)
         } catch (e: unknown) {
             console.error('Git status error:', e)
             setError('Failed to load git status')
@@ -704,6 +845,68 @@ function GitView() {
             refreshStatus()
         } else {
             alert(`Commit failed: ${result.error}`)
+        }
+    }
+
+    const handlePush = async () => {
+        setIsPushing(true)
+        const result = await gitService.push()
+        setIsPushing(false)
+        if (!result.success) {
+            alert(`Push failed: ${result.error}`)
+        } else {
+            refreshStatus()
+        }
+    }
+
+    const handlePull = async () => {
+        setIsPulling(true)
+        const result = await gitService.pull()
+        setIsPulling(false)
+        if (!result.success) {
+            alert(`Pull failed: ${result.error}`)
+        } else {
+            refreshStatus()
+        }
+    }
+
+    const handleCheckoutBranch = async (branchName: string) => {
+        const result = await gitService.checkoutBranch(branchName)
+        if (result.success) {
+            refreshStatus()
+            setShowBranches(false)
+        } else {
+            alert(`Checkout failed: ${result.error}`)
+        }
+    }
+
+    const handleCreateBranch = async () => {
+        if (!newBranchName.trim()) return
+        const result = await gitService.createBranch(newBranchName, true)
+        if (result.success) {
+            setNewBranchName('')
+            setShowNewBranch(false)
+            refreshStatus()
+        } else {
+            alert(`Create branch failed: ${result.error}`)
+        }
+    }
+
+    const handleStash = async () => {
+        const result = await gitService.stash()
+        if (result.success) {
+            refreshStatus()
+        } else {
+            alert(`Stash failed: ${result.error}`)
+        }
+    }
+
+    const handleStashPop = async (index: number) => {
+        const result = await gitService.stashApply(index, true)
+        if (result.success) {
+            refreshStatus()
+        } else {
+            alert(`Stash pop failed: ${result.error}`)
         }
     }
 
@@ -754,14 +957,113 @@ function GitView() {
                 <span className="text-xs font-semibold text-text-muted uppercase tracking-wider">
                     Source Control
                 </span>
-                <div className="flex items-center gap-1">
-                     <button onClick={refreshStatus} className={`p-1 hover:bg-surface-active rounded transition-colors ${isRefreshing ? 'animate-spin' : ''}`} title="Refresh">
+                <div className="flex items-center gap-0.5">
+                    <button 
+                        onClick={handlePull} 
+                        disabled={isPulling}
+                        className="p-1 hover:bg-surface-active rounded transition-colors disabled:opacity-50" 
+                        title="Pull"
+                    >
+                        <ArrowRight className={`w-3.5 h-3.5 text-text-muted hover:text-text-primary rotate-90 ${isPulling ? 'animate-pulse' : ''}`} />
+                    </button>
+                    <button 
+                        onClick={handlePush} 
+                        disabled={isPushing}
+                        className="p-1 hover:bg-surface-active rounded transition-colors disabled:opacity-50" 
+                        title="Push"
+                    >
+                        <ArrowRight className={`w-3.5 h-3.5 text-text-muted hover:text-text-primary -rotate-90 ${isPushing ? 'animate-pulse' : ''}`} />
+                    </button>
+                    <button onClick={refreshStatus} className={`p-1 hover:bg-surface-active rounded transition-colors ${isRefreshing ? 'animate-spin' : ''}`} title="Refresh">
                         <RefreshCw className="w-3.5 h-3.5 text-text-muted hover:text-text-primary" />
                     </button>
                 </div>
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {/* Branch Selector */}
+                {status && (
+                    <div className="px-3 py-2 border-b border-border-subtle bg-surface/30">
+                        <div 
+                            className="flex items-center gap-2 cursor-pointer hover:bg-surface-hover rounded px-2 py-1 transition-colors"
+                            onClick={() => setShowBranches(!showBranches)}
+                        >
+                            <GitBranch className="w-3.5 h-3.5 text-accent" />
+                            <span className="text-xs font-medium text-text-primary flex-1">{status.branch}</span>
+                            <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${showBranches ? 'rotate-180' : ''}`} />
+                        </div>
+                        
+                        {showBranches && (
+                            <div className="mt-2 bg-background rounded border border-border-subtle max-h-48 overflow-y-auto animate-slide-in">
+                                {/* New Branch */}
+                                <div className="p-2 border-b border-border-subtle">
+                                    {showNewBranch ? (
+                                        <div className="flex items-center gap-1">
+                                            <input
+                                                type="text"
+                                                value={newBranchName}
+                                                onChange={(e) => setNewBranchName(e.target.value)}
+                                                placeholder="Branch name"
+                                                className="flex-1 bg-surface border border-border-subtle rounded px-2 py-1 text-xs focus:outline-none focus:border-accent"
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') handleCreateBranch()
+                                                    if (e.key === 'Escape') setShowNewBranch(false)
+                                                }}
+                                                autoFocus
+                                            />
+                                            <button onClick={handleCreateBranch} className="p-1 hover:bg-surface-active rounded">
+                                                <Check className="w-3 h-3 text-status-success" />
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <button 
+                                            onClick={() => setShowNewBranch(true)}
+                                            className="flex items-center gap-2 text-xs text-text-muted hover:text-text-primary w-full px-2 py-1 hover:bg-surface-hover rounded"
+                                        >
+                                            <Plus className="w-3 h-3" />
+                                            Create new branch
+                                        </button>
+                                    )}
+                                </div>
+                                
+                                {/* Local Branches */}
+                                {branches.filter(b => !b.remote).map(branch => (
+                                    <div 
+                                        key={branch.name}
+                                        onClick={() => !branch.current && handleCheckoutBranch(branch.name)}
+                                        className={`flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer transition-colors ${
+                                            branch.current 
+                                                ? 'bg-accent/10 text-accent' 
+                                                : 'text-text-secondary hover:bg-surface-hover'
+                                        }`}
+                                    >
+                                        {branch.current && <Check className="w-3 h-3" />}
+                                        <span className={branch.current ? '' : 'ml-5'}>{branch.name}</span>
+                                    </div>
+                                ))}
+                                
+                                {/* Remote Branches */}
+                                {branches.filter(b => b.remote).length > 0 && (
+                                    <>
+                                        <div className="px-3 py-1 text-[10px] text-text-muted font-semibold bg-surface-active/30">
+                                            REMOTE
+                                        </div>
+                                        {branches.filter(b => b.remote).map(branch => (
+                                            <div 
+                                                key={branch.name}
+                                                onClick={() => handleCheckoutBranch(branch.name)}
+                                                className="flex items-center gap-2 px-3 py-1.5 text-xs text-text-muted hover:bg-surface-hover cursor-pointer"
+                                            >
+                                                <span className="ml-5">{branch.name}</span>
+                                            </div>
+                                        ))}
+                                    </>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Commit Area */}
                 <div className="p-3 border-b border-border-subtle bg-surface/30">
                     <div className="relative">
@@ -858,9 +1160,54 @@ function GitView() {
                     </div>
                 )}
 
+                {/* Stash Section */}
+                <div className="flex flex-col mt-2 border-t border-border-subtle">
+                    <div 
+                        className="px-3 py-2 flex items-center gap-2 cursor-pointer hover:bg-surface-hover select-none group"
+                        onClick={() => setShowStash(!showStash)}
+                    >
+                        <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${showStash ? '' : '-rotate-90'}`} />
+                        <span className="text-xs font-semibold text-text-muted uppercase tracking-wider flex-1">STASH</span>
+                        {stashList.length > 0 && (
+                            <span className="text-[10px] text-text-muted bg-surface-active px-1.5 rounded-full">{stashList.length}</span>
+                        )}
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); handleStash() }}
+                            className="p-1 hover:bg-surface-active rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Stash changes"
+                        >
+                            <Plus className="w-3 h-3 text-text-muted" />
+                        </button>
+                    </div>
+                    
+                    {showStash && (
+                        <div className="pb-2">
+                            {stashList.length === 0 ? (
+                                <div className="px-4 py-2 text-xs text-text-muted opacity-60">No stashed changes</div>
+                            ) : (
+                                stashList.map((stash) => (
+                                    <div key={stash.index} className="px-4 py-1.5 hover:bg-surface-hover cursor-pointer group flex items-center gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-xs text-text-primary truncate">{stash.message}</div>
+                                            <div className="text-[10px] text-text-muted">stash@{`{${stash.index}}`} on {stash.branch}</div>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleStashPop(stash.index)}
+                                            className="p-1 hover:bg-surface-active rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                                            title="Pop stash"
+                                        >
+                                            <ArrowRight className="w-3 h-3 text-text-muted" />
+                                        </button>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
+                </div>
+
                 {/* Commits List */}
                 {commits.length > 0 && (
-                    <div className="flex flex-col mt-4 border-t border-border-subtle">
+                    <div className="flex flex-col border-t border-border-subtle">
                         <div 
                             className="px-3 py-2 flex items-center gap-2 cursor-pointer hover:bg-surface-hover select-none"
                             onClick={() => setShowCommits(!showCommits)}

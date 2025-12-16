@@ -186,10 +186,23 @@ export interface ElectronAPI {
 	lspDidChange: (params: { uri: string; version: number; text: string }) => Promise<void>
 	lspDidClose: (params: { uri: string }) => Promise<void>
 	lspDefinition: (params: { uri: string; line: number; character: number }) => Promise<any>
+	lspTypeDefinition: (params: { uri: string; line: number; character: number }) => Promise<any>
+	lspImplementation: (params: { uri: string; line: number; character: number }) => Promise<any>
 	lspReferences: (params: { uri: string; line: number; character: number }) => Promise<any>
 	lspHover: (params: { uri: string; line: number; character: number }) => Promise<any>
 	lspCompletion: (params: { uri: string; line: number; character: number }) => Promise<any>
+	lspCompletionResolve: (item: any) => Promise<any>
+	lspSignatureHelp: (params: { uri: string; line: number; character: number }) => Promise<any>
 	lspRename: (params: { uri: string; line: number; character: number; newName: string }) => Promise<any>
+	lspPrepareRename: (params: { uri: string; line: number; character: number }) => Promise<any>
+	lspDocumentSymbol: (params: { uri: string }) => Promise<any>
+	lspWorkspaceSymbol: (params: { query: string }) => Promise<any>
+	lspCodeAction: (params: { uri: string; range: any; diagnostics?: any[] }) => Promise<any>
+	lspFormatting: (params: { uri: string; options?: any }) => Promise<any>
+	lspRangeFormatting: (params: { uri: string; range: any; options?: any }) => Promise<any>
+	lspDocumentHighlight: (params: { uri: string; line: number; character: number }) => Promise<any>
+	lspFoldingRange: (params: { uri: string }) => Promise<any>
+	lspInlayHint: (params: { uri: string; range: any }) => Promise<any>
 	onLspDiagnostics: (callback: (params: { uri: string; diagnostics: any[] }) => void) => () => void
 }
 
@@ -302,14 +315,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
 		ipcRenderer.invoke('lsp:didClose', params),
 	lspDefinition: (params: { uri: string; line: number; character: number }) => 
 		ipcRenderer.invoke('lsp:definition', params),
+	lspTypeDefinition: (params: { uri: string; line: number; character: number }) => 
+		ipcRenderer.invoke('lsp:typeDefinition', params),
+	lspImplementation: (params: { uri: string; line: number; character: number }) => 
+		ipcRenderer.invoke('lsp:implementation', params),
 	lspReferences: (params: { uri: string; line: number; character: number }) => 
 		ipcRenderer.invoke('lsp:references', params),
 	lspHover: (params: { uri: string; line: number; character: number }) => 
 		ipcRenderer.invoke('lsp:hover', params),
 	lspCompletion: (params: { uri: string; line: number; character: number }) => 
 		ipcRenderer.invoke('lsp:completion', params),
+	lspCompletionResolve: (item: any) => 
+		ipcRenderer.invoke('lsp:completionResolve', item),
+	lspSignatureHelp: (params: { uri: string; line: number; character: number }) => 
+		ipcRenderer.invoke('lsp:signatureHelp', params),
 	lspRename: (params: { uri: string; line: number; character: number; newName: string }) => 
 		ipcRenderer.invoke('lsp:rename', params),
+	lspPrepareRename: (params: { uri: string; line: number; character: number }) => 
+		ipcRenderer.invoke('lsp:prepareRename', params),
+	lspDocumentSymbol: (params: { uri: string }) => 
+		ipcRenderer.invoke('lsp:documentSymbol', params),
+	lspWorkspaceSymbol: (params: { query: string }) => 
+		ipcRenderer.invoke('lsp:workspaceSymbol', params),
+	lspCodeAction: (params: { uri: string; range: any; diagnostics?: any[] }) => 
+		ipcRenderer.invoke('lsp:codeAction', params),
+	lspFormatting: (params: { uri: string; options?: any }) => 
+		ipcRenderer.invoke('lsp:formatting', params),
+	lspRangeFormatting: (params: { uri: string; range: any; options?: any }) => 
+		ipcRenderer.invoke('lsp:rangeFormatting', params),
+	lspDocumentHighlight: (params: { uri: string; line: number; character: number }) => 
+		ipcRenderer.invoke('lsp:documentHighlight', params),
+	lspFoldingRange: (params: { uri: string }) => 
+		ipcRenderer.invoke('lsp:foldingRange', params),
+	lspInlayHint: (params: { uri: string; range: any }) => 
+		ipcRenderer.invoke('lsp:inlayHint', params),
 	onLspDiagnostics: (callback: (params: { uri: string; diagnostics: any[] }) => void) => {
 		const handler = (_: IpcRendererEvent, params: { uri: string; diagnostics: any[] }) => callback(params)
 		ipcRenderer.on('lsp:diagnostics', handler)

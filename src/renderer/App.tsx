@@ -14,6 +14,10 @@ import StatusBar from './components/StatusBar'
 import ComposerPanel from './components/ComposerPanel'
 import LoadingScreen from './components/LoadingScreen'
 import { initEditorConfig } from './config/editorConfig'
+import { themeManager } from './config/themeConfig'
+
+// 暴露 store 给插件系统
+;(window as any).__ADNIFY_STORE__ = { getState: () => useStore.getState() }
 
 export default function App() {
   const { 
@@ -42,9 +46,10 @@ export default function App() {
     // Load saved settings & restore workspace
     const loadSettings = async () => {
       try {
-        // 初始化编辑器配置
+        // 初始化编辑器配置和主题
         setLoadProgress({ progress: 20, status: 'Loading configuration...' })
         await initEditorConfig()
+        themeManager.init()
         
         setLoadProgress({ progress: 40, status: 'Loading settings...' })
         const savedConfig = await window.electronAPI.getSetting('llmConfig')
