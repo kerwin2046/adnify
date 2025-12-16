@@ -22,6 +22,8 @@ import {
 } from '../services/lspService'
 // 导入 Monaco worker 配置
 import { monaco } from '../monacoWorker'
+// 导入编辑器配置
+import { getEditorConfig } from '../config/editorConfig'
 
 // 配置 Monaco 使用本地安装的版本（支持国际化）
 // monaco-editor-nls 插件会在构建时注入语言包
@@ -781,8 +783,8 @@ export default function Editor() {
                     })
                 }}
                 options={{
-                    fontSize: 13,
-                    fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+                    fontSize: getEditorConfig().fontSize,
+                    fontFamily: getEditorConfig().fontFamily,
                     fontLigatures: true,
                     renderSideBySide: true,
                     readOnly: false,
@@ -819,10 +821,10 @@ export default function Editor() {
               </div>
             }
             options={{
-              fontSize: 13,
-              fontFamily: "'JetBrains Mono', 'Fira Code', 'Consolas', monospace",
+              fontSize: getEditorConfig().fontSize,
+              fontFamily: getEditorConfig().fontFamily,
               fontLigatures: true,
-              minimap: { enabled: true, scale: 1, renderCharacters: false },
+              minimap: { enabled: getEditorConfig().minimap, scale: getEditorConfig().minimapScale, renderCharacters: false },
               scrollBeyondLastLine: false,
               smoothScrolling: true,
               cursorBlinking: 'smooth',

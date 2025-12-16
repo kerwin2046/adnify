@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useStore } from './store'
 import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
@@ -12,6 +12,8 @@ import QuickOpen from './components/QuickOpen'
 import ActivityBar from './components/ActivityBar'
 import StatusBar from './components/StatusBar'
 import ComposerPanel from './components/ComposerPanel'
+import LoadingScreen from './components/LoadingScreen'
+import { initEditorConfig } from './config/editorConfig'
 
 export default function App() {
   const { 
@@ -23,6 +25,9 @@ export default function App() {
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
   const [showQuickOpen, setShowQuickOpen] = useState(false)
   const [showComposer, setShowComposer] = useState(false)
+  
+  // 加载状态
+  const [isLoading, setIsLoading] = useState(true)
 
   // Layout State
   const [sidebarWidth, setSidebarWidth] = useState(260)
@@ -30,28 +35,47 @@ export default function App() {
   const [isResizingSidebar, setIsResizingSidebar] = useState(false)
   const [isResizingChat, setIsResizingChat] = useState(false)
 
+  // 加载进度回调（传递给 LoadingScreen）
+  const [loadProgress, setLoadProgress] = useState({ progress: 0, status: 'Initializing...' })
+
   useEffect(() => {
     // Load saved settings & restore workspace
     const loadSettings = async () => {
-      const savedConfig = await window.electronAPI.getSetting('llmConfig')
-      if (savedConfig) {
-        setLLMConfig(savedConfig)
-      }
-      const savedLanguage = await window.electronAPI.getSetting('language')
-      if (savedLanguage) {
-        setLanguage(savedLanguage)
-      }
-      const savedAutoApprove = await window.electronAPI.getSetting('autoApprove')
-      if (savedAutoApprove) {
-        setAutoApprove(savedAutoApprove)
-      }
-      
-      // Auto-restore workspace
-      const lastWorkspace = await window.electronAPI.restoreWorkspace()
-      if (lastWorkspace) {
-        setWorkspacePath(lastWorkspace)
-        const items = await window.electronAPI.readDir(lastWorkspace)
-        setFiles(items)
+      try {
+        // 初始化编辑器配置
+        setLoadProgress({ progress: 20, status: 'Loading configuration...' })
+        await initEditorConfig()
+        
+        setLoadProgress({ progress: 40, status: 'Loading settings...' })
+        const savedConfig = await window.electronAPI.getSetting('llmConfig')
+        if (savedConfig) {
+          setLLMConfig(savedConfig)
+        }
+        const savedLanguage = await window.electronAPI.getSetting('language')
+        if (savedLanguage) {
+          setLanguage(savedLanguage)
+        }
+        const savedAutoApprove = await window.electronAPI.getSetting('autoApprove')
+        if (savedAutoApprove) {
+          setAutoApprove(savedAutoApprove)
+        }
+        
+        // Auto-restore workspace
+        setLoadProgress({ progress: 60, status: 'Restoring workspace...' })
+        const lastWorkspace = await window.electronAPI.restoreWorkspace()
+        if (lastWorkspace) {
+          setWorkspacePath(lastWorkspace)
+          setLoadProgress({ progress: 80, status: 'Loading files...' })
+          const items = await window.electronAPI.readDir(lastWorkspace)
+          setFiles(items)
+        }
+        
+        setLoadProgress({ progress: 100, status: 'Ready!' })
+        // 短暂延迟后隐藏加载屏幕
+        setTimeout(() => setIsLoading(false), 300)
+      } catch (error) {
+        console.error('Failed to load settings:', error)
+        setIsLoading(false)
       }
     }
     loadSettings()
@@ -151,6 +175,11 @@ export default function App() {
     window.addEventListener('keydown', handleGlobalKeyDown)
     return () => window.removeEventListener('keydown', handleGlobalKeyDown)
   }, [handleGlobalKeyDown])
+
+  // 显示加载屏幕
+  if (isLoading) {
+    return <LoadingScreen progress={loadProgress.progress} status={loadProgress.status} />
+  }
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden text-text-primary">

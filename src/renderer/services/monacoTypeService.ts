@@ -4,6 +4,7 @@
  */
 
 import type * as Monaco from 'monaco-editor'
+import { getEditorConfig } from '../config/editorConfig'
 
 // Monaco 实例引用
 let monacoInstance: typeof Monaco | null = null
@@ -123,12 +124,16 @@ export function addFileToTypeService(filePath: string, content: string) {
  */
 async function getProjectFiles(
   dirPath: string,
-  maxDepth = 5,
+  maxDepth?: number,
   currentDepth = 0
 ): Promise<string[]> {
-  if (currentDepth >= maxDepth) return []
+  const config = getEditorConfig()
+  const actualMaxDepth = maxDepth ?? config.performance.maxFileTreeDepth
+  
+  if (currentDepth >= actualMaxDepth) return []
 
   const files: string[] = []
+  const ignoredDirs = config.ignoredDirectories
 
   try {
     const entries = await window.electronAPI.readDir(dirPath)
@@ -137,23 +142,11 @@ async function getProjectFiles(
       // 跳过不需要的目录
       if (entry.isDirectory) {
         const dirName = entry.name.toLowerCase()
-        if (
-          [
-            'node_modules',
-            'dist',
-            'build',
-            '.git',
-            '.next',
-            'coverage',
-            '__pycache__',
-            '.cache',
-            'out',
-          ].includes(dirName)
-        ) {
+        if (ignoredDirs.includes(dirName)) {
           continue
         }
         // 递归处理子目录
-        const subFiles = await getProjectFiles(entry.path, maxDepth, currentDepth + 1)
+        const subFiles = await getProjectFiles(entry.path, actualMaxDepth, currentDepth + 1)
         files.push(...subFiles)
       } else {
         // 检查是否是 TS/JS 文件
@@ -183,7 +176,8 @@ export async function addProjectFilesToTypeService(workspacePath: string) {
     const files = await getProjectFiles(workspacePath)
 
     // 限制文件数量避免性能问题
-    const filesToAdd = files.slice(0, 500)
+    const maxFiles = getEditorConfig().performance.maxProjectFiles
+    const filesToAdd = files.slice(0, maxFiles)
 
     let addedCount = 0
     for (const filePath of filesToAdd) {

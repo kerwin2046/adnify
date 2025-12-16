@@ -5,6 +5,7 @@
  */
 
 import { useStore } from '../store'
+import { getEditorConfig } from '../config/editorConfig'
 
 // ============ Interfaces ============
 
@@ -64,16 +65,19 @@ const FIM_MODELS = [
 ]
 
 
-// Default options
-const DEFAULT_OPTIONS: CompletionOptions = {
-  enabled: true,
-  debounceMs: 300,  // Increased for better UX
-  maxTokens: 256,
-  temperature: 0.1,  // Lower for more deterministic completions
-  triggerCharacters: ['.', '(', '{', '[', '"', "'", '/', ' ', '\n'],
-  fimEnabled: true,
-  contextLines: 50,
-  multilineSuggestions: true,
+// 从配置获取默认选项
+function getDefaultOptions(): CompletionOptions {
+  const config = getEditorConfig()
+  return {
+    enabled: true,
+    debounceMs: config.performance.completionDebounceMs,
+    maxTokens: config.ai.completionMaxTokens,
+    temperature: config.ai.completionTemperature,
+    triggerCharacters: ['.', '(', '{', '[', '"', "'", '/', ' ', '\n'],
+    fimEnabled: true,
+    contextLines: 50,
+    multilineSuggestions: true,
+  }
 }
 
 // Stop sequences for completion
@@ -164,7 +168,7 @@ type CompletionCallback = (result: CompletionResult | null) => void
 type ErrorCallback = (error: Error) => void
 
 class CompletionService {
-  private options: CompletionOptions = { ...DEFAULT_OPTIONS }
+  private options: CompletionOptions
   private currentAbortController: AbortController | null = null
   private debouncedRequest: DebouncedFunction<(ctx: CompletionContext) => void> | null = null
   private onCompletionCallback: CompletionCallback | null = null
@@ -173,6 +177,7 @@ class CompletionService {
   private maxRecentFiles = 5
 
   constructor() {
+    this.options = getDefaultOptions()
     this.setupDebouncedRequest()
   }
 

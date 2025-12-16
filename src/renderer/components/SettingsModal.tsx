@@ -11,6 +11,7 @@ import {
 import { useStore, LLMConfig } from '../store'
 import { t, Language } from '../i18n'
 import { BUILTIN_PROVIDERS, BuiltinProviderName, ProviderModelConfig } from '../types/provider'
+import { getEditorConfig, saveEditorConfig, EditorConfig } from '../config/editorConfig'
 
 type SettingsTab = 'provider' | 'editor' | 'agent' | 'keybindings' | 'system'
 
@@ -32,21 +33,24 @@ export default function SettingsModal() {
   const [saved, setSaved] = useState(false)
 
 
-  // 编辑器设置
+  // 编辑器设置 - 使用集中配置
+  const [editorConfig] = useState<EditorConfig>(getEditorConfig())
+  
+  // 兼容旧的 editorSettings 格式
   const [editorSettings, setEditorSettings] = useState({
-    fontSize: 14,
-    tabSize: 2,
-    wordWrap: 'on' as 'on' | 'off' | 'wordWrapColumn',
+    fontSize: editorConfig.fontSize,
+    tabSize: editorConfig.tabSize,
+    wordWrap: editorConfig.wordWrap,
     lineNumbers: 'on' as 'on' | 'off' | 'relative',
-    minimap: true,
+    minimap: editorConfig.minimap,
     bracketPairColorization: true,
     formatOnSave: true,
     autoSave: 'off' as 'off' | 'afterDelay' | 'onFocusChange',
     theme: 'vs-dark',
     // AI 代码补全设置
     completionEnabled: true,
-    completionDebounceMs: 150,
-    completionMaxTokens: 256,
+    completionDebounceMs: editorConfig.performance.completionDebounceMs,
+    completionMaxTokens: editorConfig.ai.completionMaxTokens,
   })
 
   // AI 指令
@@ -86,6 +90,22 @@ export default function SettingsModal() {
     // 是的，我们将把 addModel/removeModel 传递给子组件，它们会直接修改 Store。
     // 所以这里我们需要把 Store 中的 providerConfigs 保存到后端。
     await window.electronAPI.setSetting('providerConfigs', providerConfigs)
+    
+    // 保存编辑器配置（localStorage + 文件双重存储）
+    saveEditorConfig({
+      fontSize: editorSettings.fontSize,
+      tabSize: editorSettings.tabSize,
+      wordWrap: editorSettings.wordWrap,
+      minimap: editorSettings.minimap,
+      performance: {
+        ...editorConfig.performance,
+        completionDebounceMs: editorSettings.completionDebounceMs,
+      },
+      ai: {
+        ...editorConfig.ai,
+        completionMaxTokens: editorSettings.completionMaxTokens,
+      },
+    })
     
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -405,6 +425,23 @@ interface EditorSettingsProps {
 }
 
 function EditorSettings({ settings, setSettings, language }: EditorSettingsProps) {
+  // 获取完整配置用于显示高级选项
+  const [advancedConfig, setAdvancedConfig] = useState(getEditorConfig())
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
+  const handleAdvancedChange = (key: string, value: number) => {
+    const newConfig = { ...advancedConfig }
+    if (key.startsWith('performance.')) {
+      const perfKey = key.replace('performance.', '') as keyof typeof newConfig.performance
+      newConfig.performance = { ...newConfig.performance, [perfKey]: value }
+    } else if (key.startsWith('ai.')) {
+      const aiKey = key.replace('ai.', '') as keyof typeof newConfig.ai
+      newConfig.ai = { ...newConfig.ai, [aiKey]: value }
+    }
+    setAdvancedConfig(newConfig)
+    saveEditorConfig(newConfig)
+  }
+
   return (
     <div className="space-y-6 text-text-primary">
       <div className="grid grid-cols-2 gap-4">
@@ -547,6 +584,96 @@ function EditorSettings({ settings, setSettings, language }: EditorSettingsProps
             <p className="text-xs text-text-muted mt-1">{language === 'zh' ? '补全建议的最大长度' : 'Maximum length of suggestions'}</p>
           </div>
         </div>
+      </div>
+
+      {/* 高级性能设置 */}
+      <div className="pt-4 border-t border-border-subtle">
+        <button
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          className="flex items-center gap-2 text-sm font-medium text-text-muted hover:text-text-primary transition-colors"
+        >
+          <span>{showAdvanced ? '▼' : '▶'}</span>
+          {language === 'zh' ? '高级性能设置' : 'Advanced Performance Settings'}
+        </button>
+        
+        {showAdvanced && (
+          <div className="mt-4 space-y-4 animate-slide-in">
+            <p className="text-xs text-text-muted">
+              {language === 'zh' ? '这些设置会影响编辑器性能，请谨慎修改' : 'These settings affect editor performance, modify with caution'}
+            </p>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '最大项目文件数' : 'Max Project Files'}</label>
+                <input
+                  type="number"
+                  value={advancedConfig.performance.maxProjectFiles}
+                  onChange={(e) => handleAdvancedChange('performance.maxProjectFiles', parseInt(e.target.value) || 500)}
+                  min={100} max={2000} step={100}
+                  className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                />
+                <p className="text-xs text-text-muted mt-1">{language === 'zh' ? 'LSP 扫描的最大文件数' : 'Max files for LSP scanning'}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '文件树最大深度' : 'Max File Tree Depth'}</label>
+                <input
+                  type="number"
+                  value={advancedConfig.performance.maxFileTreeDepth}
+                  onChange={(e) => handleAdvancedChange('performance.maxFileTreeDepth', parseInt(e.target.value) || 5)}
+                  min={2} max={10}
+                  className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">{language === 'zh' ? 'Git 刷新间隔 (ms)' : 'Git Refresh Interval (ms)'}</label>
+                <input
+                  type="number"
+                  value={advancedConfig.performance.gitStatusIntervalMs}
+                  onChange={(e) => handleAdvancedChange('performance.gitStatusIntervalMs', parseInt(e.target.value) || 5000)}
+                  min={1000} max={30000} step={1000}
+                  className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '请求超时 (ms)' : 'Request Timeout (ms)'}</label>
+                <input
+                  type="number"
+                  value={advancedConfig.performance.requestTimeoutMs}
+                  onChange={(e) => handleAdvancedChange('performance.requestTimeoutMs', parseInt(e.target.value) || 120000)}
+                  min={30000} max={300000} step={10000}
+                  className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">{language === 'zh' ? 'Agent 最大循环次数' : 'Max Agent Tool Loops'}</label>
+                <input
+                  type="number"
+                  value={advancedConfig.ai.maxToolLoops}
+                  onChange={(e) => handleAdvancedChange('ai.maxToolLoops', parseInt(e.target.value) || 15)}
+                  min={5} max={50}
+                  className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                />
+                <p className="text-xs text-text-muted mt-1">{language === 'zh' ? '单次对话最大工具调用次数' : 'Max tool calls per conversation'}</p>
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '终端缓冲区大小' : 'Terminal Buffer Size'}</label>
+                <input
+                  type="number"
+                  value={advancedConfig.performance.terminalBufferSize}
+                  onChange={(e) => handleAdvancedChange('performance.terminalBufferSize', parseInt(e.target.value) || 500)}
+                  min={100} max={2000} step={100}
+                  className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

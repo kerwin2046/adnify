@@ -10,9 +10,11 @@ import { checkpointService } from '../agent/checkpointService'
 import { contextService, buildContextString } from '../agent/contextService'
 import { ToolStatus } from '../agent/toolTypes'
 import { LLMStreamChunk, LLMToolCall, LLMResult, LLMError } from '../types/electron'
+import { getEditorConfig } from '../config/editorConfig'
 
-const MAX_TOOL_LOOPS = 15
-const REQUEST_TIMEOUT = 120000 // 2 分钟
+// 从配置获取
+const getMaxToolLoops = () => getEditorConfig().ai.maxToolLoops
+const getRequestTimeout = () => getEditorConfig().performance.requestTimeoutMs
 
 export function useAgent() {
 	const {
@@ -131,7 +133,7 @@ export function useAgent() {
 		// 创建一条助手消息，整个对话过程中复用这条消息
 		addMessage({ role: 'assistant', content: '', isStreaming: true })
 
-		while (shouldContinue && loopCount < MAX_TOOL_LOOPS && !abortRef.current) {
+		while (shouldContinue && loopCount < getMaxToolLoops() && !abortRef.current) {
 			loopCount++
 			shouldContinue = false
 
@@ -253,7 +255,7 @@ export function useAgent() {
 			}
 		}
 
-		if (loopCount >= MAX_TOOL_LOOPS) {
+		if (loopCount >= getMaxToolLoops()) {
 			addMessage({
 				role: 'assistant',
 				content: '⚠️ Reached maximum tool call limit. Please continue with a new message if needed.',
@@ -397,7 +399,7 @@ async function sendToLLM(params: {
 					}
 				})
 			}
-		}, REQUEST_TIMEOUT)
+		}, getRequestTimeout())
 
 		// 发送请求
 		window.electronAPI.sendMessage({

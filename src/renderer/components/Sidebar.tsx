@@ -10,6 +10,7 @@ import { FileItem } from '../types/electron'
 import { t } from '../i18n'
 import { gitService, GitStatus, GitCommit } from '../agent/gitService'
 import { useAgent } from '../hooks/useAgent'
+import { getEditorConfig } from '../config/editorConfig'
 
 const getFileIcon = (name: string) => {
   const ext = name.split('.').pop()?.toLowerCase()
@@ -258,7 +259,7 @@ function ExplorerView() {
     useEffect(() => {
         updateGitStatus()
         // 定期刷新 Git 状态
-        const interval = setInterval(updateGitStatus, 5000)
+        const interval = setInterval(updateGitStatus, getEditorConfig().performance.gitStatusIntervalMs)
         return () => clearInterval(interval)
     }, [updateGitStatus])
 
@@ -271,11 +272,11 @@ function ExplorerView() {
         const unsubscribe = window.electronAPI.onFileChanged((event) => {
             // 只处理当前工作区内的文件变化
             if (event.path.startsWith(workspacePath)) {
-                // 防抖：300ms 内的多次变化只触发一次刷新
+                // 防抖：fileChangeDebounceMs 内的多次变化只触发一次刷新
                 if (debounceTimer) clearTimeout(debounceTimer)
                 debounceTimer = setTimeout(() => {
                     refreshFiles()
-                }, 300)
+                }, getEditorConfig().performance.fileChangeDebounceMs)
             }
         })
 
@@ -673,7 +674,7 @@ function GitView() {
 
     useEffect(() => {
         refreshStatus()
-        const interval = setInterval(refreshStatus, 10000) 
+        const interval = setInterval(refreshStatus, getEditorConfig().performance.indexStatusIntervalMs) 
         return () => clearInterval(interval)
     }, [refreshStatus])
 

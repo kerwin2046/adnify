@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { X, Plus, Trash2, ChevronUp, ChevronDown, Terminal as TerminalIcon, Sparkles } from 'lucide-react'
 import { useStore } from '../store'
+import { getEditorConfig } from '../config/editorConfig'
 // import { t } from '../i18n'
 
 const XTERM_STYLE = `
@@ -121,9 +122,9 @@ export default function TerminalPanel() {
               try {
                   addon.fit()
                   // Sync size to backend
-                  if (addon.proposeDimensions()) {
-                      const { cols, rows } = addon.proposeDimensions()!
-                      window.electronAPI.resizeTerminal(activeId, cols, rows)
+                  const dims = addon.proposeDimensions()
+                  if (dims && dims.cols > 0 && dims.rows > 0) {
+                      window.electronAPI.resizeTerminal(activeId, dims.cols, dims.rows)
                   }
               } catch (e) { console.error(e) }
           }
@@ -152,7 +153,8 @@ export default function TerminalPanel() {
               }
               const buffer = outputBuffers.current.get(targetId)!
               buffer.push(data)
-              if (buffer.length > 500) buffer.shift()
+              const bufferSize = getEditorConfig().performance.terminalBufferSize
+              if (buffer.length > bufferSize) buffer.shift()
           }
       })
       return unsubscribe
@@ -172,11 +174,13 @@ export default function TerminalPanel() {
           const container = containerRefs.current.get(id)
           if (!container) return
 
+          const termConfig = getEditorConfig().terminal
           const term = new XTerminal({
-            cursorBlink: true,
-            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-            fontSize: 13,
-            lineHeight: 1.2,
+            cursorBlink: termConfig.cursorBlink,
+            fontFamily: termConfig.fontFamily,
+            fontSize: termConfig.fontSize,
+            lineHeight: termConfig.lineHeight,
+            scrollback: termConfig.scrollback,
             theme: {
                 background: '#18181b',
                 foreground: '#e4e4e7',
@@ -210,9 +214,9 @@ export default function TerminalPanel() {
           await window.electronAPI.createTerminal({ id, cwd: workspacePath || undefined, shell: shellPath })
           
           // Initial size sync
-          if (fitAddon.proposeDimensions()) {
-              const { cols, rows } = fitAddon.proposeDimensions()!
-              window.electronAPI.resizeTerminal(id, cols, rows)
+          const dims = fitAddon.proposeDimensions()
+          if (dims && dims.cols > 0 && dims.rows > 0) {
+              window.electronAPI.resizeTerminal(id, dims.cols, dims.rows)
           }
           
           // REMOVED: Extra newline which caused duplicate prompt

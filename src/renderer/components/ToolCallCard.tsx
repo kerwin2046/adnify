@@ -14,6 +14,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { ToolCall, useStore } from '../store'
 import { extractPartialString } from '../utils/partialJson'
 import { t } from '../i18n'
+import { getEditorConfig } from '../config/editorConfig'
 
 // ============ Types ============
 
@@ -174,22 +175,25 @@ function ToolResultViewer({
     )
   }
 
+  const maxResultLength = getEditorConfig().performance.maxResultLength
+
   // 对于文件内容，使用代码高亮
   if (toolName === 'read_file' && result.length > 0) {
     return (
       <div className="max-h-48 overflow-auto custom-scrollbar">
         <pre className="text-xs text-text-secondary font-mono whitespace-pre-wrap">
-          {result.slice(0, 2000)}
-          {result.length > 2000 && '\n... (truncated)'}
+          {result.slice(0, maxResultLength)}
+          {result.length > maxResultLength && '\n... (truncated)'}
         </pre>
       </div>
     )
   }
 
+  const displayLength = Math.min(maxResultLength, 1000)
   return (
     <pre className="text-xs text-text-secondary font-mono whitespace-pre-wrap max-h-48 overflow-auto custom-scrollbar">
-      {result.slice(0, 1000)}
-      {result.length > 1000 && '... (truncated)'}
+      {result.slice(0, displayLength)}
+      {result.length > displayLength && '... (truncated)'}
     </pre>
   )
 }

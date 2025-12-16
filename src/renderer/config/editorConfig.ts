@@ -1,6 +1,7 @@
 /**
  * 编辑器配置
  * 集中管理所有可配置的参数
+ * 双重存储：localStorage（快速读取）+ 文件（持久化备份）
  */
 
 export interface EditorConfig {
@@ -27,20 +28,20 @@ export interface EditorConfig {
     // 文件扫描
     maxProjectFiles: number // LSP 扫描的最大文件数
     maxFileTreeDepth: number // 文件树最大深度
-    
+
     // 防抖延迟
     fileChangeDebounceMs: number // 文件变化防抖
     completionDebounceMs: number // 代码补全防抖
     searchDebounceMs: number // 搜索防抖
-    
+
     // 刷新间隔
     gitStatusIntervalMs: number // Git 状态刷新间隔
     indexStatusIntervalMs: number // 索引状态刷新间隔
-    
+
     // 超时
     requestTimeoutMs: number // API 请求超时
     commandTimeoutMs: number // 命令执行超时
-    
+
     // 缓冲区大小
     terminalBufferSize: number // 终端输出缓冲区大小
     maxResultLength: number // 结果显示最大长度
@@ -117,52 +118,16 @@ export const defaultEditorConfig: EditorConfig = {
   ],
 }
 
-// 配置存储 key
-const CONFIG_STORAGE_KEY = 'adnify-editor-config'
-
-/**
- * 获取配置
- */
-export function getEditorConfig(): EditorConfig {
-  try {
-    const stored = localStorage.getItem(CONFIG_STORAGE_KEY)
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      // 合并默认配置，确保新增的配置项有默认值
-      return deepMerge(defaultEditorConfig, parsed)
-    }
-  } catch (e) {
-    console.error('Failed to load editor config:', e)
-  }
-  return defaultEditorConfig
-}
-
-/**
- * 保存配置
- */
-export function saveEditorConfig(config: Partial<EditorConfig>): void {
-  try {
-    const current = getEditorConfig()
-    const merged = deepMerge(current, config)
-    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(merged))
-  } catch (e) {
-    console.error('Failed to save editor config:', e)
-  }
-}
-
-/**
- * 重置配置
- */
-export function resetEditorConfig(): void {
-  localStorage.removeItem(CONFIG_STORAGE_KEY)
-}
+// 存储 key
+const LOCAL_STORAGE_KEY = 'adnify-editor-config'
+const FILE_STORAGE_KEY = 'editorConfig'
 
 /**
  * 深度合并对象
  */
 function deepMerge<T extends object>(target: T, source: Partial<T>): T {
   const result = { ...target }
-  
+
   for (const key in source) {
     if (source[key] !== undefined) {
       if (
@@ -172,12 +137,128 @@ function deepMerge<T extends object>(target: T, source: Partial<T>): T {
         typeof target[key] === 'object' &&
         target[key] !== null
       ) {
-        (result as any)[key] = deepMerge(target[key] as object, source[key] as object)
+        ;(result as Record<string, unknown>)[key] = deepMerge(
+          target[key] as object,
+          source[key] as object
+        )
       } else {
-        (result as any)[key] = source[key]
+        ;(result as Record<string, unknown>)[key] = source[key]
       }
     }
   }
-  
+
   return result
+}
+
+/**
+ * 从 localStorage 读取配置
+ */
+function readFromLocalStorage(): EditorConfig | null {
+  try {
+    const stored = localStorage.getItem(LOCAL_STORAGE_KEY)
+    if (stored) {
+      return JSON.parse(stored)
+    }
+  } catch (e) {
+    console.error('[EditorConfig] Failed to read from localStorage:', e)
+  }
+  return null
+}
+
+/**
+ * 写入 localStorage
+ */
+function writeToLocalStorage(config: EditorConfig): void {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(config))
+  } catch (e) {
+    console.error('[EditorConfig] Failed to write to localStorage:', e)
+  }
+}
+
+/**
+ * 初始化配置
+ * 优先从 localStorage 读取，如果没有则从文件读取
+ * 应在应用启动时调用
+ */
+export async function initEditorConfig(): Promise<EditorConfig> {
+  // 1. 先尝试从 localStorage 读取（快速）
+  const localConfig = readFromLocalStorage()
+  if (localConfig) {
+    const merged = deepMerge(defaultEditorConfig, localConfig)
+    // 异步同步到文件（不阻塞）
+    window.electronAPI.setSetting(FILE_STORAGE_KEY, merged).catch(console.error)
+    return merged
+  }
+
+  // 2. localStorage 没有，从文件读取
+  try {
+    const fileConfig = await window.electronAPI.getSetting(FILE_STORAGE_KEY)
+    if (fileConfig) {
+      const merged = deepMerge(defaultEditorConfig, fileConfig as Partial<EditorConfig>)
+      // 同步到 localStorage
+      writeToLocalStorage(merged)
+      return merged
+    }
+  } catch (e) {
+    console.error('[EditorConfig] Failed to read from file:', e)
+  }
+
+  // 3. 都没有，使用默认配置并保存
+  writeToLocalStorage(defaultEditorConfig)
+  window.electronAPI.setSetting(FILE_STORAGE_KEY, defaultEditorConfig).catch(console.error)
+  return defaultEditorConfig
+}
+
+/**
+ * 获取配置（同步，从 localStorage 读取）
+ * 如果 localStorage 没有，返回默认配置
+ */
+export function getEditorConfig(): EditorConfig {
+  const localConfig = readFromLocalStorage()
+  if (localConfig) {
+    return deepMerge(defaultEditorConfig, localConfig)
+  }
+  return defaultEditorConfig
+}
+
+/**
+ * 保存配置（同时保存到 localStorage 和文件）
+ */
+export function saveEditorConfig(config: Partial<EditorConfig>): void {
+  const current = getEditorConfig()
+  const merged = deepMerge(current, config)
+
+  // 同步写入 localStorage（快速）
+  writeToLocalStorage(merged)
+
+  // 异步写入文件（持久化备份，不阻塞）
+  window.electronAPI.setSetting(FILE_STORAGE_KEY, merged).catch((e) => {
+    console.error('[EditorConfig] Failed to save to file:', e)
+  })
+}
+
+/**
+ * 重置配置
+ */
+export function resetEditorConfig(): void {
+  writeToLocalStorage(defaultEditorConfig)
+  window.electronAPI.setSetting(FILE_STORAGE_KEY, defaultEditorConfig).catch(console.error)
+}
+
+/**
+ * 从文件恢复配置（用于备份恢复场景）
+ */
+export async function restoreFromFile(): Promise<EditorConfig> {
+  try {
+    const fileConfig = await window.electronAPI.getSetting(FILE_STORAGE_KEY)
+    if (fileConfig) {
+      const merged = deepMerge(defaultEditorConfig, fileConfig as Partial<EditorConfig>)
+      writeToLocalStorage(merged)
+      return merged
+    }
+  } catch (e) {
+    console.error('[EditorConfig] Failed to restore from file:', e)
+  }
+  return defaultEditorConfig
 }
