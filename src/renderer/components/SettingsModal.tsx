@@ -123,15 +123,23 @@ export default function SettingsModal() {
           <h2 className="text-lg font-semibold text-text-primary">{t('settings', localLanguage)}</h2>
           <div className="flex items-center gap-4">
             {/* Language Selector */}
-            <select
-              value={localLanguage}
-              onChange={(e) => setLocalLanguage(e.target.value as Language)}
-              className="bg-surface border border-border-subtle rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
-            >
-              {LANGUAGES.map(lang => (
-                <option key={lang.id} value={lang.id}>{lang.name}</option>
-              ))}
-            </select>
+            <div className="relative group">
+              <select
+                value={localLanguage}
+                onChange={(e) => setLocalLanguage(e.target.value as Language)}
+                className="bg-surface border border-border-subtle rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+              >
+                {LANGUAGES.map(lang => (
+                  <option key={lang.id} value={lang.id}>{lang.name}</option>
+                ))}
+              </select>
+              {/* 语言切换提示 */}
+              {localLanguage !== language && (
+                <div className="absolute top-full right-0 mt-1 px-2 py-1 bg-warning/10 border border-warning/20 rounded text-[10px] text-warning whitespace-nowrap z-50">
+                  {localLanguage === 'zh' ? '保存后需重新加载以应用编辑器菜单语言' : 'Reload required for editor menu language'}
+                </div>
+              )}
+            </div>
             <button onClick={() => setShowSettings(false)} className="p-2 rounded-lg hover:bg-surface-hover transition-colors">
               <X className="w-5 h-5 text-text-muted hover:text-text-primary" />
             </button>

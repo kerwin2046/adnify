@@ -154,6 +154,19 @@ export interface ElectronAPI {
 	indexTestConnection: (workspacePath: string) => Promise<{ success: boolean; error?: string; latency?: number }>
 	indexGetProviders: () => Promise<EmbeddingProvider[]>
 	onIndexProgress: (callback: (status: IndexStatus) => void) => () => void
+
+	// LSP (Language Server Protocol)
+	lspStart: (workspacePath: string) => Promise<{ success: boolean }>
+	lspStop: () => Promise<{ success: boolean }>
+	lspDidOpen: (params: { uri: string; languageId: string; version: number; text: string }) => Promise<void>
+	lspDidChange: (params: { uri: string; version: number; text: string }) => Promise<void>
+	lspDidClose: (params: { uri: string }) => Promise<void>
+	lspDefinition: (params: { uri: string; line: number; character: number }) => Promise<LspLocation[] | null>
+	lspReferences: (params: { uri: string; line: number; character: number }) => Promise<LspLocation[] | null>
+	lspHover: (params: { uri: string; line: number; character: number }) => Promise<LspHover | null>
+	lspCompletion: (params: { uri: string; line: number; character: number }) => Promise<LspCompletionList | null>
+	lspRename: (params: { uri: string; line: number; character: number; newName: string }) => Promise<LspWorkspaceEdit | null>
+	onLspDiagnostics: (callback: (params: { uri: string; diagnostics: LspDiagnostic[] }) => void) => () => void
 }
 
 // Indexing types
@@ -191,6 +204,59 @@ export interface EmbeddingProvider {
 	name: string
 	description: string
 	free: boolean
+}
+
+// LSP Types
+export interface LspPosition {
+	line: number
+	character: number
+}
+
+export interface LspRange {
+	start: LspPosition
+	end: LspPosition
+}
+
+export interface LspLocation {
+	uri: string
+	range: LspRange
+}
+
+export interface LspHover {
+	contents: string | { kind: string; value: string } | Array<string | { kind: string; value: string }>
+	range?: LspRange
+}
+
+export interface LspCompletionItem {
+	label: string
+	kind?: number
+	detail?: string
+	documentation?: string | { kind: string; value: string }
+	insertText?: string
+	insertTextFormat?: number
+}
+
+export interface LspCompletionList {
+	isIncomplete: boolean
+	items: LspCompletionItem[]
+}
+
+export interface LspTextEdit {
+	range: LspRange
+	newText: string
+}
+
+export interface LspWorkspaceEdit {
+	changes?: { [uri: string]: LspTextEdit[] }
+	documentChanges?: Array<{ textDocument: { uri: string; version?: number }; edits: LspTextEdit[] }>
+}
+
+export interface LspDiagnostic {
+	range: LspRange
+	severity?: number
+	code?: string | number
+	source?: string
+	message: string
 }
 
 declare global {

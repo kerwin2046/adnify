@@ -588,7 +588,7 @@ function SearchView() {
                 {!isSearching && searchResults.length > 0 && (
                     <div className="flex flex-col">
                         <div className="px-3 py-1.5 text-[10px] text-text-muted font-semibold bg-background-secondary border-b border-border-subtle sticky top-0 z-10">
-                            {searchResults.length} results in {Object.keys(resultsByFile).length} files
+                            {t('searchResultsCount', language, { results: String(searchResults.length), files: String(Object.keys(resultsByFile).length) })}
                         </div>
                         
                         {Object.entries(resultsByFile).map(([filePath, results]) => {

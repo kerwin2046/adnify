@@ -53,11 +53,16 @@ export default defineConfig({
 	],
 	resolve: {
 		alias: {
-			'@': path.resolve(__dirname, './src')
+			'@': path.resolve(__dirname, './src'),
+			// Monaco 编辑器国际化：将 vscode-nls 指向 monaco-editor-nls
+			'vscode-nls': path.resolve(__dirname, './node_modules/monaco-editor-nls')
 		}
 	},
 	base: './',
 	build: {
 		outDir: 'dist/renderer'
+	},
+	optimizeDeps: {
+		include: ['monaco-editor']
 	}
 })

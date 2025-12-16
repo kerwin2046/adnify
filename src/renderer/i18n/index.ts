@@ -218,6 +218,25 @@ export const translations = {
 		// CommandPalette
 		'typeCommandOrSearch': 'Type a command or search...',
 		'noCommandsFound': 'No commands found',
+
+		// Search Results
+		'searchResultsCount': '{results} results in {files} files',
+
+		// Editor Context Menu
+		'ctxGotoDefinition': 'Go to Definition',
+		'ctxFindReferences': 'Find All References',
+		'ctxGotoSymbol': 'Go to Symbol...',
+		'ctxRename': 'Rename Symbol',
+		'ctxChangeAll': 'Change All Occurrences',
+		'ctxFormat': 'Format Document',
+		'ctxCut': 'Cut',
+		'ctxCopy': 'Copy',
+		'ctxPaste': 'Paste',
+		'ctxFind': 'Find',
+		'ctxReplace': 'Replace',
+		'ctxToggleComment': 'Toggle Line Comment',
+		'ctxDeleteLine': 'Delete Line',
+		'ctxSelectNext': 'Select Next Occurrence',
 	},
 	zh: {
 		// Title bar
@@ -436,6 +455,25 @@ export const translations = {
 		// CommandPalette
 		'typeCommandOrSearch': '输入命令或搜索...',
 		'noCommandsFound': '未找到命令',
+
+		// Search Results
+		'searchResultsCount': '在 {files} 个文件中找到 {results} 个结果',
+
+		// Editor Context Menu
+		'ctxGotoDefinition': '跳转到定义',
+		'ctxFindReferences': '查找所有引用',
+		'ctxGotoSymbol': '跳转到符号...',
+		'ctxRename': '重命名符号',
+		'ctxChangeAll': '更改所有匹配项',
+		'ctxFormat': '格式化文档',
+		'ctxCut': '剪切',
+		'ctxCopy': '复制',
+		'ctxPaste': '粘贴',
+		'ctxFind': '查找',
+		'ctxReplace': '替换',
+		'ctxToggleComment': '切换行注释',
+		'ctxDeleteLine': '删除行',
+		'ctxSelectNext': '选择下一个匹配项',
 	}
 } as const
 

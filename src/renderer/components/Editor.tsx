@@ -6,18 +6,26 @@ import { useStore } from '../store'
 import { t } from '../i18n'
 import DiffViewer from './DiffViewer'
 import InlineEdit from './InlineEdit'
+import EditorContextMenu from './EditorContextMenu'
 import { lintService } from '../agent/lintService'
 import { streamingEditService } from '../agent/streamingEditService'
 import { LintError, StreamingEditState } from '../agent/toolTypes'
 import { completionService } from '../services/completionService'
 import { createGhostTextManager, GhostTextManager } from './GhostTextWidget'
+import { initMonacoTypeService } from '../services/monacoTypeService'
+import {
+  startLspServer,
+  didOpenDocument,
+  didChangeDocument,
+  goToDefinition,
+  lspUriToPath,
+} from '../services/lspService'
+// 导入 Monaco worker 配置
+import { monaco } from '../monacoWorker'
 
-// Configure Monaco to load from CDN
-loader.config({
-  paths: {
-    vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs'
-  }
-})
+// 配置 Monaco 使用本地安装的版本（支持国际化）
+// monaco-editor-nls 插件会在构建时注入语言包
+loader.config({ monaco })
 
 // 语言映射
 const LANGUAGE_MAP: Record<string, string> = {
@@ -113,6 +121,9 @@ export default function Editor() {
   // AI 代码补全状态
   const [completionEnabled] = useState(true)
 
+  // 自定义右键菜单状态
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+
   const activeFile = openFiles.find(f => f.path === activeFilePath)
   const activeLanguage = activeFile ? getLanguage(activeFile.path) : 'plaintext'
 
@@ -120,39 +131,165 @@ export default function Editor() {
     editorRef.current = editor
     monacoRef.current = monaco
 
-    // 配置 TypeScript/JavaScript 编译选项
-    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-      target: monaco.languages.typescript.ScriptTarget.ESNext,
-      module: monaco.languages.typescript.ModuleKind.ESNext,
-      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      jsx: monaco.languages.typescript.JsxEmit.React,
-      allowJs: true,
-      checkJs: true,
-      strict: true,
-      esModuleInterop: true,
-      skipLibCheck: true,
-      allowSyntheticDefaultImports: true,
+    // 启动 LSP 服务器（异步）
+    const { workspacePath } = useStore.getState()
+    if (workspacePath) {
+      startLspServer(workspacePath).then((success) => {
+        if (success) {
+          console.log('[Editor] LSP server started')
+          // 通知 LSP 当前文件已打开
+          const currentFile = useStore.getState().openFiles.find(
+            f => f.path === useStore.getState().activeFilePath
+          )
+          if (currentFile) {
+            didOpenDocument(currentFile.path, currentFile.content)
+          }
+        }
+      })
+    }
+
+    // 注册定义提供者 - 使用 LSP 实现跳转到定义
+    monaco.languages.registerDefinitionProvider(
+      ['typescript', 'typescriptreact', 'javascript', 'javascriptreact'],
+      {
+        provideDefinition: async (model, position) => {
+          const filePath = model.uri.fsPath || lspUriToPath(model.uri.toString())
+          const result = await goToDefinition(
+            filePath,
+            position.lineNumber - 1, // LSP 使用 0-based 行号
+            position.column - 1
+          )
+
+          if (!result || result.length === 0) return null
+
+          return result.map((loc) => ({
+            uri: monaco.Uri.parse(loc.uri),
+            range: {
+              startLineNumber: loc.range.start.line + 1,
+              startColumn: loc.range.start.character + 1,
+              endLineNumber: loc.range.end.line + 1,
+              endColumn: loc.range.end.character + 1,
+            },
+          }))
+        },
+      }
+    )
+
+    // 注册链接提供者 - 处理 import 语句的 Ctrl+Click（作为备用）
+    monaco.languages.registerLinkProvider(['typescript', 'typescriptreact', 'javascript', 'javascriptreact'], {
+      provideLinks: (model) => {
+        const links: { range: import('monaco-editor').IRange; url?: string; tooltip?: string }[] = []
+        const lineCount = model.getLineCount()
+        
+        for (let lineNumber = 1; lineNumber <= lineCount; lineNumber++) {
+          const lineContent = model.getLineContent(lineNumber)
+          
+          // 匹配 import 语句中的路径
+          const importMatch = lineContent.match(/(?:import|from|require\()\s*['"]([^'"]+)['"]/g)
+          if (importMatch) {
+            importMatch.forEach(match => {
+              const pathMatch = match.match(/['"]([^'"]+)['"]/)
+              if (pathMatch) {
+                const importPath = pathMatch[1]
+                const startCol = lineContent.indexOf(pathMatch[0]) + 2
+                const endCol = startCol + importPath.length
+                
+                links.push({
+                  range: {
+                    startLineNumber: lineNumber,
+                    startColumn: startCol,
+                    endLineNumber: lineNumber,
+                    endColumn: endCol,
+                  },
+                  // 使用自定义协议，在 resolveLink 中处理
+                  url: `adnify-import://${encodeURIComponent(importPath)}`,
+                  tooltip: `Ctrl+Click to open ${importPath}`,
+                })
+              }
+            })
+          }
+        }
+        
+        return { links }
+      },
+      resolveLink: async (link) => {
+        if (!link.url) return link
+        
+        // 处理自定义协议
+        const urlStr = typeof link.url === 'string' ? link.url : link.url.toString()
+        if (urlStr.startsWith('adnify-import://')) {
+          const importPath = decodeURIComponent(urlStr.replace('adnify-import://', ''))
+          const { activeFilePath: currentFilePath } = useStore.getState()
+          if (currentFilePath) {
+            await handleImportClick(importPath, currentFilePath)
+          }
+          // 返回 undefined 阻止默认行为
+          return undefined as any
+        }
+        
+        return link
+      }
     })
 
-    // 添加快捷键... (保留原有逻辑)
+    // 监听 Ctrl+Click 事件来处理链接跳转
+    editor.onMouseDown((e) => {
+      // 检查是否按住 Ctrl 键
+      if (!e.event.ctrlKey && !e.event.metaKey) return
+      
+      const model = editor.getModel()
+      if (!model) return
+      
+      const position = e.target.position
+      if (!position) return
+      
+      const lineContent = model.getLineContent(position.lineNumber)
+      
+      // 检查点击位置是否在 import 路径上
+      const importRegex = /(?:import|from|require\()\s*['"]([^'"]+)['"]/g
+      let match
+      while ((match = importRegex.exec(lineContent)) !== null) {
+        const pathMatch = match[0].match(/['"]([^'"]+)['"]/)
+        if (pathMatch) {
+          const importPath = pathMatch[1]
+          const startCol = lineContent.indexOf(pathMatch[0]) + 2
+          const endCol = startCol + importPath.length
+          
+          // 检查点击位置是否在路径范围内
+          if (position.column >= startCol && position.column <= endCol) {
+            const { activeFilePath: currentFilePath } = useStore.getState()
+            if (currentFilePath) {
+              e.event.preventDefault()
+              e.event.stopPropagation()
+              handleImportClick(importPath, currentFilePath)
+            }
+            return
+          }
+        }
+      }
+    })
+
+    // 自定义右键菜单
+    editor.onContextMenu((e) => {
+      e.event.preventDefault()
+      e.event.stopPropagation()
+      setContextMenu({ x: e.event.posx, y: e.event.posy })
+    })
+
+    // 快捷键绑定（右键菜单使用自定义组件 EditorContextMenu）
     // Ctrl+D: 选择下一个匹配
     editor.addAction({
       id: 'select-next-occurrence',
       label: 'Select Next Occurrence',
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyD],
-      run: (ed) => {
-        ed.getAction('editor.action.addSelectionToNextFindMatch')?.run()
-      }
+      run: (ed) => ed.getAction('editor.action.addSelectionToNextFindMatch')?.run()
     })
 
     // Ctrl+/: 切换注释
     editor.addAction({
       id: 'toggle-comment',
-      label: 'Toggle Comment',
+      label: 'Toggle Line Comment',
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Slash],
-      run: (ed) => {
-        ed.getAction('editor.action.commentLine')?.run()
-      }
+      run: (ed) => ed.getAction('editor.action.commentLine')?.run()
     })
 
     // Ctrl+Shift+K: 删除行
@@ -160,29 +297,7 @@ export default function Editor() {
       id: 'delete-line',
       label: 'Delete Line',
       keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyK],
-      run: (ed) => {
-        ed.getAction('editor.action.deleteLines')?.run()
-      }
-    })
-    
-     // Shift+Alt+F: 格式化文档
-    editor.addAction({
-      id: 'format-document',
-      label: 'Format Document',
-      keybindings: [monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF],
-      run: (ed) => {
-        ed.getAction('editor.action.formatDocument')?.run()
-      }
-    })
-
-    // F2: 重命名符号
-    editor.addAction({
-      id: 'rename-symbol',
-      label: 'Rename Symbol',
-      keybindings: [monaco.KeyCode.F2],
-      run: (ed) => {
-        ed.getAction('editor.action.rename')?.run()
-      }
+      run: (ed) => ed.getAction('editor.action.deleteLines')?.run()
     })
 
     // Cmd+K / Ctrl+K: 内联编辑
@@ -331,6 +446,61 @@ export default function Editor() {
     completionService.requestCompletion(context)
   }, [activeFilePath])
 
+  // 处理 import 路径点击
+  const handleImportClick = useCallback(async (importPath: string, currentFilePath?: string) => {
+    const filePath = currentFilePath || activeFilePath
+    if (!filePath) return
+    
+    const { workspacePath, openFile, setActiveFile } = useStore.getState()
+    if (!workspacePath) return
+    
+    // 获取当前文件的目录
+    const sep = filePath.includes('\\') ? '\\' : '/'
+    const currentDir = filePath.substring(0, filePath.lastIndexOf(sep))
+    
+    // 解析 import 路径
+    let targetPath = importPath
+    
+    // 相对路径
+    if (importPath.startsWith('./') || importPath.startsWith('../')) {
+      targetPath = currentDir + sep + importPath
+      // 规范化路径
+      targetPath = targetPath.split(sep).reduce((acc: string[], part) => {
+        if (part === '..') acc.pop()
+        else if (part !== '.') acc.push(part)
+        return acc
+      }, []).join(sep)
+    } 
+    // 绝对路径（从项目根目录）
+    else if (importPath.startsWith('@/') || importPath.startsWith('~/')) {
+      targetPath = workspacePath + sep + importPath.slice(2)
+    }
+    // node_modules 或别名路径 - 暂不处理
+    else if (!importPath.startsWith('/')) {
+      // 尝试从 src 目录查找
+      targetPath = workspacePath + sep + 'src' + sep + importPath
+    }
+    
+    // 尝试不同的扩展名
+    const extensions = ['', '.ts', '.tsx', '.js', '.jsx', '/index.ts', '/index.tsx', '/index.js', '/index.jsx']
+    
+    for (const ext of extensions) {
+      const fullPath = targetPath + ext
+      try {
+        const content = await window.electronAPI.readFile(fullPath)
+        if (content !== null) {
+          openFile(fullPath, content)
+          setActiveFile(fullPath)
+          return
+        }
+      } catch {
+        // 继续尝试下一个扩展名
+      }
+    }
+    
+    console.warn('Could not resolve import path:', importPath)
+  }, [activeFilePath])
+
   // 监听流式编辑
   useEffect(() => {
     if (!activeFilePath) return
@@ -389,15 +559,11 @@ export default function Editor() {
     }
   }, [activeFilePath])
 
-  // 文件变化时清除 lint 错误和补全
+  // 文件变化时清除状态
+  // 注意：由于使用 key={activeFile.path}，编辑器会在文件切换时重新创建
   useEffect(() => {
     setLintErrors([])
-    if (editorRef.current && monacoRef.current) {
-      const model = editorRef.current.getModel()
-      if (model) {
-        monacoRef.current.editor.setModelMarkers(model, 'lint', [])
-      }
-    }
+    
     // 清除补全状态
     ghostTextRef.current?.hide()
     completionService.cancel()
@@ -627,13 +793,24 @@ export default function Editor() {
           ) : (
           <MonacoEditor
             height="100%"
+            // 使用 key 强制在文件切换时重新创建编辑器实例
+            key={activeFile.path}
+            // 使用 monaco.Uri.file() 生成的 URI 字符串
+            // 这确保与 TypeScript 语言服务内部使用的格式一致
+            path={monaco.Uri.file(activeFile.path).toString()}
             language={activeLanguage}
             value={activeFile.content}
             theme="vs-dark"
+            beforeMount={(monacoInstance) => {
+              // 初始化 TypeScript 语言服务
+              initMonacoTypeService(monacoInstance)
+            }}
             onMount={handleEditorMount}
             onChange={(value) => {
               if (value !== undefined) {
                 updateFileContent(activeFile.path, value)
+                // 通知 LSP 文档变更
+                didChangeDocument(activeFile.path, value)
               }
             }}
             loading={
@@ -680,9 +857,32 @@ export default function Editor() {
               },
               stickyScroll: { enabled: true },
               inlayHints: { enabled: 'on' },
+              // 链接点击支持
+              links: true,
+              // 跳转到定义
+              gotoLocation: {
+                multiple: 'goto',
+                multipleDefinitions: 'goto',
+                multipleTypeDefinitions: 'goto',
+                multipleDeclarations: 'goto',
+                multipleImplementations: 'goto',
+                multipleReferences: 'goto',
+              },
+              // 禁用 Monaco 内置右键菜单，使用自定义国际化菜单
+              contextmenu: false,
             }}
           />
           )
+        )}
+
+        {/* 自定义右键菜单 */}
+        {contextMenu && editorRef.current && (
+          <EditorContextMenu
+            x={contextMenu.x}
+            y={contextMenu.y}
+            editor={editorRef.current}
+            onClose={() => setContextMenu(null)}
+          />
         )}
       </div>
     </div>

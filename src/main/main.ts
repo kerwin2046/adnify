@@ -10,6 +10,7 @@ import * as fsPromises from 'fs/promises'
 import { spawn } from 'child_process'
 import Store from 'electron-store'
 import { LLMService } from './llm/llmService'
+import { registerLspHandlers, stopLanguageServer } from './lspServer'
 
 // ==========================================
 // Native Modules - 原生高性能模块
@@ -107,7 +108,12 @@ function createWindow() {
     llmService = new LLMService(mainWindow)
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+    // 注册 LSP 处理器
+    registerLspHandlers()
+    
+    createWindow()
+})
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit()
@@ -127,6 +133,9 @@ app.on('before-quit', async () => {
     if (watcherSubscription) {
         await watcherSubscription.unsubscribe()
     }
+    
+    // 停止 LSP 服务器
+    stopLanguageServer()
 })
 
 // ==========================================

@@ -178,6 +178,19 @@ export interface ElectronAPI {
 	indexTestConnection: (workspacePath: string) => Promise<{ success: boolean; error?: string; latency?: number }>
 	indexGetProviders: () => Promise<EmbeddingProvider[]>
 	onIndexProgress: (callback: (status: IndexStatusData) => void) => () => void
+
+	// LSP (Language Server Protocol)
+	lspStart: (workspacePath: string) => Promise<{ success: boolean }>
+	lspStop: () => Promise<{ success: boolean }>
+	lspDidOpen: (params: { uri: string; languageId: string; version: number; text: string }) => Promise<void>
+	lspDidChange: (params: { uri: string; version: number; text: string }) => Promise<void>
+	lspDidClose: (params: { uri: string }) => Promise<void>
+	lspDefinition: (params: { uri: string; line: number; character: number }) => Promise<any>
+	lspReferences: (params: { uri: string; line: number; character: number }) => Promise<any>
+	lspHover: (params: { uri: string; line: number; character: number }) => Promise<any>
+	lspCompletion: (params: { uri: string; line: number; character: number }) => Promise<any>
+	lspRename: (params: { uri: string; line: number; character: number; newName: string }) => Promise<any>
+	onLspDiagnostics: (callback: (params: { uri: string; diagnostics: any[] }) => void) => () => void
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -276,5 +289,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
 		const handler = (_: IpcRendererEvent, status: IndexStatusData) => callback(status)
 		ipcRenderer.on('index:progress', handler)
 		return () => ipcRenderer.removeListener('index:progress', handler)
+	},
+
+	// LSP (Language Server Protocol)
+	lspStart: (workspacePath: string) => ipcRenderer.invoke('lsp:start', workspacePath),
+	lspStop: () => ipcRenderer.invoke('lsp:stop'),
+	lspDidOpen: (params: { uri: string; languageId: string; version: number; text: string }) => 
+		ipcRenderer.invoke('lsp:didOpen', params),
+	lspDidChange: (params: { uri: string; version: number; text: string }) => 
+		ipcRenderer.invoke('lsp:didChange', params),
+	lspDidClose: (params: { uri: string }) => 
+		ipcRenderer.invoke('lsp:didClose', params),
+	lspDefinition: (params: { uri: string; line: number; character: number }) => 
+		ipcRenderer.invoke('lsp:definition', params),
+	lspReferences: (params: { uri: string; line: number; character: number }) => 
+		ipcRenderer.invoke('lsp:references', params),
+	lspHover: (params: { uri: string; line: number; character: number }) => 
+		ipcRenderer.invoke('lsp:hover', params),
+	lspCompletion: (params: { uri: string; line: number; character: number }) => 
+		ipcRenderer.invoke('lsp:completion', params),
+	lspRename: (params: { uri: string; line: number; character: number; newName: string }) => 
+		ipcRenderer.invoke('lsp:rename', params),
+	onLspDiagnostics: (callback: (params: { uri: string; diagnostics: any[] }) => void) => {
+		const handler = (_: IpcRendererEvent, params: { uri: string; diagnostics: any[] }) => callback(params)
+		ipcRenderer.on('lsp:diagnostics', handler)
+		return () => ipcRenderer.removeListener('lsp:diagnostics', handler)
 	},
 } as ElectronAPI)
