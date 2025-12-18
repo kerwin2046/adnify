@@ -58,9 +58,11 @@ export function registerAllHandlers(context: IPCContext) {
 /**
  * 清理所有资源
  */
-export async function cleanupAllHandlers() {
+export function cleanupAllHandlers() {
+  console.log('[IPC] Cleaning up all handlers...')
   cleanupTerminals()
-  await cleanupFileWatcher()
+  cleanupFileWatcher() // 改为同步调用
+  console.log('[IPC] All handlers cleaned up')
 }
 
 export { updateLLMServiceWindow }

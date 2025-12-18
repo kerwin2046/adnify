@@ -41,29 +41,29 @@ export class LLMService {
         // OpenAI 兼容的 providers
         case 'deepseek':
           this.providers.set(key, new OpenAIProvider(
-            config.apiKey, 
-            config.baseUrl || 'https://api.deepseek.com', 
+            config.apiKey,
+            config.baseUrl || 'https://api.deepseek.com',
             config.timeout
           ))
           break
         case 'groq':
           this.providers.set(key, new OpenAIProvider(
-            config.apiKey, 
-            config.baseUrl || 'https://api.groq.com/openai/v1', 
+            config.apiKey,
+            config.baseUrl || 'https://api.groq.com/openai/v1',
             config.timeout
           ))
           break
         case 'mistral':
           this.providers.set(key, new OpenAIProvider(
-            config.apiKey, 
-            config.baseUrl || 'https://api.mistral.ai/v1', 
+            config.apiKey,
+            config.baseUrl || 'https://api.mistral.ai/v1',
             config.timeout
           ))
           break
         case 'ollama':
           this.providers.set(key, new OpenAIProvider(
             config.apiKey || 'ollama', // Ollama 不需要 API key
-            config.baseUrl || 'http://localhost:11434/v1', 
+            config.baseUrl || 'http://localhost:11434/v1',
             config.timeout
           ))
           break
@@ -110,11 +110,23 @@ export class LLMService {
         signal: this.currentAbortController.signal,
 
         onStream: (chunk) => {
-          this.window.webContents.send('llm:stream', chunk)
+          if (!this.window.isDestroyed()) {
+            try {
+              this.window.webContents.send('llm:stream', chunk)
+            } catch (e) {
+              // 忽略窗口已销毁的错误
+            }
+          }
         },
 
         onToolCall: (toolCall) => {
-          this.window.webContents.send('llm:toolCall', toolCall)
+          if (!this.window.isDestroyed()) {
+            try {
+              this.window.webContents.send('llm:toolCall', toolCall)
+            } catch (e) {
+              // 忽略窗口已销毁的错误
+            }
+          }
         },
 
         onComplete: (result) => {
@@ -122,7 +134,13 @@ export class LLMService {
             contentLength: result.content.length,
             toolCallCount: result.toolCalls?.length || 0,
           })
-          this.window.webContents.send('llm:done', result)
+          if (!this.window.isDestroyed()) {
+            try {
+              this.window.webContents.send('llm:done', result)
+            } catch (e) {
+              // 忽略窗口已销毁的错误
+            }
+          }
         },
 
         onError: (error) => {
@@ -131,22 +149,34 @@ export class LLMService {
             message: error.message,
             retryable: error.retryable,
           })
-          this.window.webContents.send('llm:error', {
-            message: error.message,
-            code: error.code,
-            retryable: error.retryable,
-          })
+          if (!this.window.isDestroyed()) {
+            try {
+              this.window.webContents.send('llm:error', {
+                message: error.message,
+                code: error.code,
+                retryable: error.retryable,
+              })
+            } catch (e) {
+              // 忽略窗口已销毁的错误
+            }
+          }
         },
       })
     } catch (error: unknown) {
       const err = error as { name?: string; message?: string }
       if (err.name !== 'AbortError') {
         console.error('[LLMService] Uncaught error:', error)
-        this.window.webContents.send('llm:error', {
-          message: err.message || 'Unknown error',
-          code: LLMErrorCode.UNKNOWN,
-          retryable: false,
-        })
+        if (!this.window.isDestroyed()) {
+          try {
+            this.window.webContents.send('llm:error', {
+              message: err.message || 'Unknown error',
+              code: LLMErrorCode.UNKNOWN,
+              retryable: false,
+            })
+          } catch (e) {
+            // 忽略窗口已销毁的错误
+          }
+        }
       }
     }
   }

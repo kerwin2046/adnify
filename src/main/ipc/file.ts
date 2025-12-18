@@ -19,15 +19,15 @@ async function readFileWithEncoding(filePath: string): Promise<string> {
     const buffer = await fsPromises.readFile(filePath)
     const detected = jschardet.detect(buffer)
     const encoding = detected.encoding || 'utf-8'
-    
+
     if (encoding.toLowerCase() === 'utf-8' || encoding.toLowerCase() === 'ascii') {
       return buffer.toString('utf-8')
     }
-    
+
     if (iconv.encodingExists(encoding)) {
       return iconv.decode(buffer, encoding)
     }
-    
+
     return buffer.toString('utf-8')
   } catch (e) {
     console.error('[File] Read error:', e)
@@ -40,35 +40,35 @@ async function readLargeFile(filePath: string, startLine = 0, maxLines = 1000): 
   return new Promise((resolve, reject) => {
     const lines: string[] = []
     let lineCount = 0
-    
+
     const stream = fs.createReadStream(filePath, { encoding: 'utf-8' })
     let buffer = ''
-    
+
     stream.on('data', (chunk: string | Buffer) => {
       buffer += chunk.toString()
       const parts = buffer.split('\n')
       buffer = parts.pop() || ''
-      
+
       for (const line of parts) {
         if (lineCount >= startLine && lines.length < maxLines) {
           lines.push(line)
         }
         lineCount++
-        
+
         if (lines.length >= maxLines) {
           stream.destroy()
           break
         }
       }
     })
-    
+
     stream.on('end', () => {
       if (buffer && lines.length < maxLines) {
         lines.push(buffer)
       }
       resolve(lines.join('\n'))
     })
-    
+
     stream.on('error', reject)
   })
 }
@@ -90,12 +90,18 @@ async function startFileWatcher(
           console.error('[Watcher] Error:', err)
           return
         }
-        
+
         for (const event of events) {
-          mainWindow?.webContents.send('file:changed', {
-            event: event.type,
-            path: event.path,
-          })
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+              mainWindow.webContents.send('file:changed', {
+                event: event.type,
+                path: event.path,
+              })
+            } catch (e) {
+              // 忽略窗口已销毁的错误
+            }
+          }
         }
       },
       {
@@ -108,7 +114,7 @@ async function startFileWatcher(
         ],
       }
     )
-    
+
     console.log('[Watcher] Started watching:', folderPath)
   } catch (e) {
     console.error('[Watcher] Failed to start:', e)
@@ -123,12 +129,12 @@ export function registerFileHandlers(
   ipcMain.handle('file:open', async () => {
     const mainWindow = getMainWindow()
     if (!mainWindow) return null
-    
+
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openFile'],
       filters: [{ name: 'All Files', extensions: ['*'] }],
     })
-    
+
     if (!result.canceled && result.filePaths.length > 0) {
       const filePath = result.filePaths[0]
       const content = await readFileWithEncoding(filePath)
@@ -141,11 +147,11 @@ export function registerFileHandlers(
   ipcMain.handle('file:openFolder', async () => {
     const mainWindow = getMainWindow()
     if (!mainWindow) return null
-    
+
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
     })
-    
+
     if (!result.canceled && result.filePaths.length > 0) {
       const folderPath = result.filePaths[0]
       mainStore.set('lastWorkspacePath', folderPath)
@@ -163,13 +169,13 @@ export function registerFileHandlers(
   }) => {
     const mainWindow = getMainWindow()
     if (!mainWindow) return null
-    
+
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: (options.properties || ['openFile']) as any,
       defaultPath: options.defaultPath,
       filters: options.filters || [{ name: 'All Files', extensions: ['*'] }],
     })
-    
+
     if (!result.canceled && result.filePaths.length > 0) {
       return result.filePaths
     }
@@ -202,19 +208,19 @@ export function registerFileHandlers(
   // 获取目录树
   ipcMain.handle('file:getTree', async (_, dirPath: string, maxDepth = 2) => {
     if (!dirPath) return ''
-    
+
     try {
       await fsPromises.access(dirPath)
     } catch {
       return ''
     }
-    
+
     const IGNORED_DIRS = new Set(['.git', 'node_modules', 'dist', 'build', '.vscode', '.idea', 'coverage', 'tmp', '.adnify'])
     const IGNORED_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg', '.woff', '.woff2', '.exe', '.dll', '.bin', '.lock'])
 
     async function buildTree(currentPath: string, depth: number, prefix = ''): Promise<string> {
       if (depth > maxDepth) return ''
-      
+
       try {
         const items = (await fsPromises.readdir(currentPath, { withFileTypes: true }))
           .sort((a, b) => {
@@ -222,7 +228,7 @@ export function registerFileHandlers(
             if (!a.isDirectory() && b.isDirectory()) return 1
             return a.name.localeCompare(b.name)
           })
-        
+
         let result = ''
         const filteredItems = items.filter(item => {
           if (item.isDirectory() && IGNORED_DIRS.has(item.name)) return false
@@ -232,13 +238,13 @@ export function registerFileHandlers(
           }
           return true
         })
-        
+
         for (let i = 0; i < filteredItems.length; i++) {
           const item = filteredItems[i]
           const isLast = i === filteredItems.length - 1
           const pointer = isLast ? '└── ' : '├── '
           result += `${prefix}${pointer}${item.name}${item.isDirectory() ? '/' : ''}\n`
-          
+
           if (item.isDirectory()) {
             const nextPrefix = prefix + (isLast ? '    ' : '│   ')
             result += await buildTree(path.join(currentPath, item.name), depth + 1, nextPrefix)
@@ -249,7 +255,7 @@ export function registerFileHandlers(
         return ''
       }
     }
-    
+
     return buildTree(dirPath, 0)
   })
 
@@ -257,11 +263,11 @@ export function registerFileHandlers(
   ipcMain.handle('file:read', async (_, filePath: string) => {
     try {
       const stats = await fsPromises.stat(filePath)
-      
+
       if (stats.size > 5 * 1024 * 1024) {
         return await readLargeFile(filePath, 0, 10000)
       }
-      
+
       return await readFileWithEncoding(filePath)
     } catch (e: any) {
       console.error('[File] read failed:', filePath, e.message)
@@ -274,14 +280,14 @@ export function registerFileHandlers(
     try {
       if (!filePath || typeof filePath !== 'string') return false
       if (content === undefined || content === null) return false
-      
+
       const dir = path.dirname(filePath)
       try {
         await fsPromises.access(dir)
       } catch {
         await fsPromises.mkdir(dir, { recursive: true })
       }
-      
+
       await fsPromises.writeFile(filePath, content, 'utf-8')
       return true
     } catch (e: any) {
@@ -303,18 +309,18 @@ export function registerFileHandlers(
   // 保存文件对话框
   ipcMain.handle('file:save', async (_, content: string, currentPath?: string) => {
     const mainWindow = getMainWindow()
-    
+
     if (currentPath) {
       await fsPromises.writeFile(currentPath, content, 'utf-8')
       return currentPath
     }
-    
+
     if (!mainWindow) return null
-    
+
     const result = await dialog.showSaveDialog(mainWindow, {
       filters: [{ name: 'All Files', extensions: ['*'] }],
     })
-    
+
     if (!result.canceled && result.filePath) {
       await fsPromises.writeFile(result.filePath, content, 'utf-8')
       return result.filePath
@@ -374,15 +380,17 @@ export function registerFileHandlers(
 }
 
 // 清理资源
-export async function cleanupFileWatcher() {
+export function cleanupFileWatcher() {
   if (watcherSubscription) {
-    try {
-      await watcherSubscription.unsubscribe()
-    } catch (e) {
+    console.log('[Watcher] Cleaning up file watcher...')
+    const subscription = watcherSubscription
+    watcherSubscription = null // 立即清空引用,防止重复调用
+
+    // 异步取消订阅,但不等待结果
+    subscription.unsubscribe().catch((e) => {
       // 忽略 "Object has been destroyed" 错误
-      // 这在 Electron 退出时是正常的，因为 native 对象可能已被销毁
-      console.log('[Watcher] Cleanup skipped (already destroyed)')
-    }
-    watcherSubscription = null
+      // 这在 Electron 退出时是正常的,因为 native 对象可能已被销毁
+      console.log('[Watcher] Cleanup error (ignored):', e.message)
+    })
   }
 }

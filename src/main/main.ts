@@ -53,7 +53,7 @@ let isQuitting = false
 // ==========================================
 
 function createWindow() {
-  // 图标路径：开发环境用 public，生产环境用 resources
+  // 图标路径:开发环境用 public,生产环境用 resources
   const iconPath = app.isPackaged
     ? path.join(process.resourcesPath, 'icon.png')
     : path.join(__dirname, '../../public/icon.png')
@@ -67,8 +67,9 @@ function createWindow() {
     titleBarStyle: 'hidden',
     icon: iconPath,
     trafficLightPosition: { x: 15, y: 15 },
-    backgroundColor: '#09090b', // 与 loader 背景色一致，避免闪烁
-    show: false, // 先隐藏，等内容准备好再显示
+    backgroundColor: '#09090b', // 与 loader 背景色一致,避免闪烁
+    show: false, // 先隐藏,等内容准备好再显示
+    skipTaskbar: true, // 防止在任务栏中闪烁空白图标
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -76,13 +77,15 @@ function createWindow() {
     },
   })
 
-  // 监听渲染进程发来的"准备好了"信号，而不是 ready-to-show
-  // 这样可以等 React 完全渲染后再显示窗口
-  const { ipcMain } = require('electron')
-  ipcMain.once('app:ready', () => {
+  // VSCode 风格:使用 ready-to-show 事件,在页面基本加载完成后立即显示
+  // 这样可以快速启动,避免托盘闪烁,同时让用户看到加载进度
+  mainWindow.once('ready-to-show', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setSkipTaskbar(false) // 显示前先加入任务栏
       mainWindow.show()
-      // 开发模式下延迟打开 DevTools，避免影响首屏
+      console.log('[Main] Window shown (ready-to-show)')
+
+      // 开发模式下延迟打开 DevTools,避免影响首屏
       if (!app.isPackaged) {
         setTimeout(() => {
           mainWindow?.webContents.openDevTools({ mode: 'detach' })
@@ -91,39 +94,31 @@ function createWindow() {
     }
   })
 
-  // 备用：如果 5 秒内没收到 ready 信号，强制显示（防止卡住）
-  const showTimeout = setTimeout(() => {
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
-      console.warn('[Main] Timeout waiting for app:ready, forcing show')
-      mainWindow.show()
-    }
-  }, 5000)
-
-  mainWindow.once('closed', () => {
-    clearTimeout(showTimeout)
-  })
-
   // 窗口关闭前清理资源
   mainWindow.on('close', async (e) => {
     if (!isQuitting) {
       isQuitting = true
       e.preventDefault()
-      
-      // 清理资源（带超时保护）
+
+      console.log('[Main] Starting cleanup...')
+
+      // 先清理资源,再销毁窗口
       try {
-        await Promise.race([
-          (async () => {
-            await cleanupAllHandlers()
-            await lspManager.stopAllServers()
-          })(),
-          new Promise(resolve => setTimeout(resolve, 2000))
-        ])
+        // 同步清理,不使用 Promise.race
+        cleanupAllHandlers() // 终端等资源的同步清理
+        await lspManager.stopAllServers() // LSP 服务器的异步清理
+        console.log('[Main] Cleanup completed')
       } catch (err) {
         console.error('[Main] Cleanup error:', err)
       }
-      
-      // 销毁窗口并退出
-      mainWindow?.destroy()
+
+      // 确保清理完成后再销毁窗口
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.destroy()
+        mainWindow = null
+      }
+
+      // 最后退出应用
       app.quit()
     }
   })

@@ -386,7 +386,13 @@ class LspManager {
       this.diagnosticsCache.set(uri, diagnostics)
 
       BrowserWindow.getAllWindows().forEach((win) => {
-        win.webContents.send('lsp:diagnostics', { ...message.params, serverName })
+        if (!win.isDestroyed()) {
+          try {
+            win.webContents.send('lsp:diagnostics', { ...message.params, serverName })
+          } catch (e) {
+            // 忽略窗口已销毁的错误
+          }
+        }
       })
     }
   }
@@ -442,7 +448,7 @@ class LspManager {
 
     // 使用更长的超时时间进行初始化（TypeScript 服务器可能需要较长时间）
     const initTimeout = serverName === 'typescript' ? 60000 : 45000
-    
+
     await this.sendRequest(serverName, 'initialize', {
       processId: process.pid,
       rootUri,
@@ -497,7 +503,7 @@ class LspManager {
     try {
       await this.sendRequest(serverName, 'shutdown', null, 3000)
       this.sendNotification(serverName, 'exit', null)
-    } catch {}
+    } catch { }
 
     instance.process.kill()
     this.servers.delete(serverName)

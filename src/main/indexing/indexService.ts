@@ -45,7 +45,7 @@ export class CodebaseIndexService {
     try {
       const workerPath = path.join(__dirname, 'indexer.worker.js')
       this.worker = new Worker(workerPath)
-      
+
       this.worker.on('message', async (message: any) => {
         switch (message.type) {
           case 'progress':
@@ -53,7 +53,7 @@ export class CodebaseIndexService {
             if (message.total) this.status.totalFiles = message.total
             this.emitProgress()
             break
-            
+
           case 'result':
             if (message.chunks && message.chunks.length > 0) {
               await this.vectorStore.addBatch(message.chunks)
@@ -63,7 +63,7 @@ export class CodebaseIndexService {
             if (message.total) this.status.totalFiles = message.total
             this.emitProgress()
             break
-            
+
           case 'update_result':
             if (message.deleted) {
               await this.vectorStore.deleteFile(message.filePath)
@@ -72,14 +72,14 @@ export class CodebaseIndexService {
             }
             console.log(`[IndexService] Updated index for: ${message.filePath}`)
             break
-            
+
           case 'complete':
             this.status.isIndexing = false
             this.status.lastIndexedAt = Date.now()
             console.log(`[IndexService] Indexing complete. Total chunks: ${this.status.totalChunks}`)
             this.emitProgress()
             break
-            
+
           case 'error':
             console.error('[IndexService] Worker error:', message.error)
             this.status.error = message.error
@@ -114,7 +114,7 @@ export class CodebaseIndexService {
    */
   async initialize(): Promise<void> {
     await this.vectorStore.initialize()
-    
+
     // 从数据库读取实际的索引统计
     const hasExistingIndex = await this.vectorStore.hasIndex()
     if (hasExistingIndex) {
@@ -122,8 +122,8 @@ export class CodebaseIndexService {
       this.status.totalChunks = stats.chunkCount
       this.status.totalFiles = stats.fileCount
     }
-    
-    console.log('[IndexService] Initialized for:', this.workspacePath, 
+
+    console.log('[IndexService] Initialized for:', this.workspacePath,
       hasExistingIndex ? `(${this.status.totalChunks} chunks)` : '(no index)')
   }
 
@@ -292,8 +292,12 @@ export class CodebaseIndexService {
    * 发送进度事件到渲染进程
    */
   private emitProgress(): void {
-    if (this.mainWindow) {
-      this.mainWindow.webContents.send('index:progress', this.status)
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      try {
+        this.mainWindow.webContents.send('index:progress', this.status)
+      } catch (e) {
+        // 忽略窗口已销毁的错误
+      }
     }
   }
 }

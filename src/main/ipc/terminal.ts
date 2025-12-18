@@ -56,7 +56,7 @@ export function registerTerminalHandlers(getMainWindow: () => BrowserWindow | nu
         console.error('[Terminal] node-pty not available')
         return false
       }
-      
+
       // Windows 上的 ConPTY 配置
       const ptyOptions: import('node-pty').IPtyForkOptions = {
         name: 'xterm-256color',
@@ -76,11 +76,25 @@ export function registerTerminalHandlers(getMainWindow: () => BrowserWindow | nu
       terminals.set(id, ptyProcess)
 
       ptyProcess.onData((data) => {
-        getMainWindow()?.webContents.send('terminal:data', { id, data })
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          try {
+            win.webContents.send('terminal:data', { id, data })
+          } catch (e) {
+            // 忽略窗口已销毁的错误
+          }
+        }
       })
 
       ptyProcess.onExit(({ exitCode }) => {
-        getMainWindow()?.webContents.send('terminal:exit', { id, code: exitCode })
+        const win = getMainWindow()
+        if (win && !win.isDestroyed()) {
+          try {
+            win.webContents.send('terminal:exit', { id, code: exitCode })
+          } catch (e) {
+            // 忽略窗口已销毁的错误
+          }
+        }
         terminals.delete(id)
       })
 
@@ -124,7 +138,7 @@ export function registerTerminalHandlers(getMainWindow: () => BrowserWindow | nu
   // 获取可用 shell 列表
   ipcMain.handle('terminal:get-shells', async () => {
     const shells: { label: string; path: string }[] = []
-    
+
     const findShell = (cmd: string): string[] => {
       try {
         const result = process.platform === 'win32'
@@ -135,37 +149,37 @@ export function registerTerminalHandlers(getMainWindow: () => BrowserWindow | nu
         return []
       }
     }
-    
+
     if (process.platform === 'win32') {
       shells.push({ label: 'PowerShell', path: 'powershell.exe' })
       shells.push({ label: 'Command Prompt', path: 'cmd.exe' })
-      
+
       const bashPaths = findShell('bash')
-      const gitBash = bashPaths.find(p => 
+      const gitBash = bashPaths.find(p =>
         p.toLowerCase().includes('git') && fs.existsSync(p)
       )
       if (gitBash) {
         shells.push({ label: 'Git Bash', path: gitBash })
       }
-      
+
       const wslPaths = findShell('wsl')
       if (wslPaths.length > 0) {
         try {
           execSync('wsl --list --quiet', { stdio: 'ignore', timeout: 2000 })
           shells.push({ label: 'WSL', path: 'wsl.exe' })
-        } catch {}
+        } catch { }
       }
     } else {
       const bash = findShell('bash')[0]
       if (bash) shells.push({ label: 'Bash', path: bash })
-      
+
       const zsh = findShell('zsh')[0]
       if (zsh) shells.push({ label: 'Zsh', path: zsh })
-      
+
       const fish = findShell('fish')[0]
       if (fish) shells.push({ label: 'Fish', path: fish })
     }
-    
+
     return shells
   })
 
@@ -194,30 +208,24 @@ export function registerTerminalHandlers(getMainWindow: () => BrowserWindow | nu
 
 // 清理所有终端
 export function cleanupTerminals() {
-  // 在 Windows 上，先尝试优雅关闭，避免 ConPTY 错误
-  terminals.forEach((term, id) => {
+  console.log(`[Terminal] Cleaning up ${terminals.size} terminals`)
+
+  // 立即清理,避免异步操作导致的"Object has been destroyed"错误
+  const terminalArray = Array.from(terminals.entries())
+  terminals.clear() // 先清空 map,防止新的操作
+
+  terminalArray.forEach(([id, term]) => {
     try {
-      // 发送退出信号
-      if (process.platform === 'win32') {
-        // Windows: 发送 Ctrl+C 然后 exit
-        term.write('\x03') // Ctrl+C
-        term.write('exit\r')
+      // 移除所有事件监听器,防止在销毁后触发
+      if (term && typeof term.kill === 'function') {
+        // 直接强制终止,不发送信号(避免触发事件)
+        term.kill()
       }
-      // 给一点时间让进程退出
-      setTimeout(() => {
-        try {
-          term.kill()
-        } catch {
-          // 忽略已经退出的进程
-        }
-      }, 100)
     } catch (e) {
-      console.error(`[Terminal] Error cleaning up terminal ${id}:`, e)
+      // 忽略已经销毁的终端
+      console.error(`[Terminal] Error killing terminal ${id}:`, e)
     }
   })
-  
-  // 延迟清理 map
-  setTimeout(() => {
-    terminals.clear()
-  }, 200)
+
+  console.log('[Terminal] Cleanup completed')
 }
