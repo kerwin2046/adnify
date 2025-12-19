@@ -17,7 +17,6 @@ import {
 import { Logo } from '@/renderer/components/Logo'
 import { useStore } from '@/renderer/store'
 import { useAgent } from '@/renderer/hooks/useAgent'
-import { useToast } from '@/renderer/components/Toast'
 import { t } from '@/renderer/i18n'
 import { toFullPath } from '@/renderer/utils/pathUtils'
 import {
@@ -43,6 +42,7 @@ import { keybindingService } from '@/renderer/services/keybindingService'
 import SlashCommandPopup from './SlashCommandPopup'
 import { slashCommandService, SlashCommand } from '@/renderer/services/slashCommandService'
 import { Button } from '../ui'
+import { useToast } from '@/renderer/components/ToastProvider'
 
 export default function ChatPanel() {
   const {

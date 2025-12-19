@@ -13,11 +13,11 @@ import { t, Language } from '../i18n'
 import { BUILTIN_PROVIDERS, BuiltinProviderName, ProviderModelConfig } from '../types/provider'
 import { getEditorConfig, saveEditorConfig, EditorConfig } from '../config/editorConfig'
 import { themes } from './ThemeManager'
-import { toast } from './Toast'
+import { toast } from './ToastProvider'
 import { getPromptTemplates } from '../agent/promptTemplates'
 import { completionService } from '../services/completionService'
 import KeybindingPanel from './KeybindingPanel'
-import { Button, Input, Checkbox, Modal } from './ui'
+import { Button, Input, Checkbox, Modal, Select } from './ui'
 
 type SettingsTab = 'provider' | 'editor' | 'agent' | 'keybindings' | 'security' | 'system'
 
@@ -225,16 +225,12 @@ export default function SettingsModal() {
       <div className="flex items-center justify-between px-6 py-4 border-t border-border-subtle -mx-6 -mb-6 mt-6 bg-background/50">
         <div className="flex items-center gap-4">
           {/* Language Selector */}
-          <div className="relative group">
-            <select
+          <div className="relative group w-32">
+            <Select
               value={localLanguage}
-              onChange={(e) => setLocalLanguage(e.target.value as Language)}
-              className="bg-surface border border-border-subtle rounded-lg px-3 py-1.5 text-sm text-text-primary focus:outline-none focus:border-accent"
-            >
-              {LANGUAGES.map(lang => (
-                <option key={lang.id} value={lang.id}>{lang.name}</option>
-              ))}
-            </select>
+              onChange={(value) => setLocalLanguage(value as Language)}
+              options={LANGUAGES.map(lang => ({ value: lang.id, label: lang.name }))}
+            />
             {/* 语言切换提示 */}
             {localLanguage !== language && (
               <div className="absolute top-full left-0 mt-1 px-2 py-1 bg-warning/10 border border-warning/20 rounded text-[10px] text-warning whitespace-nowrap z-50">
@@ -310,15 +306,12 @@ function ProviderSettings({
       <div>
         <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '模型' : 'Model'}</label>
         <div className="space-y-3">
-          <select
+          <Select
             value={localConfig.model}
-            onChange={(e) => setLocalConfig({ ...localConfig, model: e.target.value })}
-            className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-accent"
-          >
-            {selectedProvider?.models.map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+            onChange={(value) => setLocalConfig({ ...localConfig, model: value })}
+            options={selectedProvider?.models.map(m => ({ value: m, label: m })) || []}
+            className="w-full"
+          />
 
           {/* Add Model UI */}
           <div className="flex gap-2">
@@ -542,42 +535,45 @@ function EditorSettings({ settings, setSettings, language }: EditorSettingsProps
         </div>
         <div>
           <label className="text-sm font-medium mb-2 block">{language === 'zh' ? 'Tab 大小' : 'Tab Size'}</label>
-          <select
-            value={settings.tabSize}
-            onChange={(e) => setSettings({ ...settings, tabSize: parseInt(e.target.value) })}
-            className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-          >
-            <option value={2}>2</option>
-            <option value={4}>4</option>
-            <option value={8}>8</option>
-          </select>
+          <Select
+            value={settings.tabSize.toString()}
+            onChange={(value) => setSettings({ ...settings, tabSize: parseInt(value) })}
+            options={[
+              { value: '2', label: '2' },
+              { value: '4', label: '4' },
+              { value: '8', label: '8' },
+            ]}
+            className="w-full"
+          />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '自动换行' : 'Word Wrap'}</label>
-          <select
+          <Select
             value={settings.wordWrap}
-            onChange={(e) => setSettings({ ...settings, wordWrap: e.target.value as 'on' | 'off' | 'wordWrapColumn' })}
-            className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-          >
-            <option value="on">{language === 'zh' ? '开启' : 'On'}</option>
-            <option value="off">{language === 'zh' ? '关闭' : 'Off'}</option>
-            <option value="wordWrapColumn">{language === 'zh' ? '按列' : 'By Column'}</option>
-          </select>
+            onChange={(value) => setSettings({ ...settings, wordWrap: value as 'on' | 'off' | 'wordWrapColumn' })}
+            options={[
+              { value: 'on', label: language === 'zh' ? '开启' : 'On' },
+              { value: 'off', label: language === 'zh' ? '关闭' : 'Off' },
+              { value: 'wordWrapColumn', label: language === 'zh' ? '按列' : 'By Column' },
+            ]}
+            className="w-full"
+          />
         </div>
         <div>
           <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '行号' : 'Line Numbers'}</label>
-          <select
+          <Select
             value={settings.lineNumbers}
-            onChange={(e) => setSettings({ ...settings, lineNumbers: e.target.value as 'on' | 'off' | 'relative' })}
-            className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-          >
-            <option value="on">{language === 'zh' ? '显示' : 'On'}</option>
-            <option value="off">{language === 'zh' ? '隐藏' : 'Off'}</option>
-            <option value="relative">{language === 'zh' ? '相对' : 'Relative'}</option>
-          </select>
+            onChange={(value) => setSettings({ ...settings, lineNumbers: value as 'on' | 'off' | 'relative' })}
+            options={[
+              { value: 'on', label: language === 'zh' ? '显示' : 'On' },
+              { value: 'off', label: language === 'zh' ? '隐藏' : 'Off' },
+              { value: 'relative', label: language === 'zh' ? '相对' : 'Relative' },
+            ]}
+            className="w-full"
+          />
         </div>
       </div>
 
@@ -603,15 +599,16 @@ function EditorSettings({ settings, setSettings, language }: EditorSettingsProps
 
       <div>
         <label className="text-sm font-medium mb-2 block">{language === 'zh' ? '自动保存' : 'Auto Save'}</label>
-        <select
+        <Select
           value={settings.autoSave}
-          onChange={(e) => setSettings({ ...settings, autoSave: e.target.value as 'off' | 'afterDelay' | 'onFocusChange' })}
-          className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent"
-        >
-          <option value="off">{language === 'zh' ? '关闭' : 'Off'}</option>
-          <option value="afterDelay">{language === 'zh' ? '延迟后' : 'After Delay'}</option>
-          <option value="onFocusChange">{language === 'zh' ? '失去焦点时' : 'On Focus Change'}</option>
-        </select>
+          onChange={(value) => setSettings({ ...settings, autoSave: value as 'off' | 'afterDelay' | 'onFocusChange' })}
+          options={[
+            { value: 'off', label: language === 'zh' ? '关闭' : 'Off' },
+            { value: 'afterDelay', label: language === 'zh' ? '延迟后' : 'After Delay' },
+            { value: 'onFocusChange', label: language === 'zh' ? '失去焦点时' : 'On Focus Change' },
+          ]}
+          className="w-full"
+        />
       </div>
 
       {/* AI 代码补全设置 */}
@@ -810,15 +807,12 @@ function AgentSettings({
 
       <div>
         <h3 className="text-sm font-medium mb-3">{language === 'zh' ? 'Prompt 模板' : 'Prompt Template'}</h3>
-        <select
+        <Select
           value={promptTemplateId}
-          onChange={(e) => setPromptTemplateId(e.target.value)}
-          className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2 text-sm text-text-primary focus:outline-none focus:border-accent mb-2"
-        >
-          {templates.map(t => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </select>
+          onChange={(value) => setPromptTemplateId(value)}
+          options={templates.map(t => ({ value: t.id, label: t.name }))}
+          className="w-full mb-2"
+        />
         <p className="text-xs text-text-muted">
           {templates.find(t => t.id === promptTemplateId)?.description}
         </p>

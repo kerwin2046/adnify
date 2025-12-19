@@ -14,7 +14,7 @@ import { useAgent } from '@/renderer/hooks/useAgent'
 import { t } from '@/renderer/i18n'
 import { keybindingService } from '@/renderer/services/keybindingService'
 import { adnifyDir } from '@/renderer/services/adnifyDirService'
-import { toast } from '@/renderer/components/Toast'
+import { toast } from '@/renderer/components/ToastProvider'
 
 interface Command {
   id: string

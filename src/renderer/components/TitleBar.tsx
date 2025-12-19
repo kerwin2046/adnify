@@ -1,6 +1,7 @@
 import { Minus, Square, X, Search, Plus, HelpCircle } from 'lucide-react'
 import { useStore } from '../store'
 import { Logo } from './Logo'
+import { Button } from './ui'
 
 export default function TitleBar() {
   const { setShowQuickOpen, setShowAbout } = useStore()
@@ -22,48 +23,58 @@ export default function TitleBar() {
           <Search className="w-3 h-3 text-text-muted group-hover:text-accent transition-colors" />
           <span className="text-text-muted group-hover:text-text-primary transition-colors">Search files...</span>
           <div className="flex items-center gap-1 ml-auto">
-            <kbd className="hidden sm:inline-block font-mono bg-white/5 border border-white/10 rounded px-1 text-[10px] text-text-muted">Ctrl P</kbd>
+            <kbd className="hidden sm:inline-block font-mono bg-white/5 border border-white/10 rounded px-1.5 py-0.5 text-[10px] text-text-muted group-hover:text-text-secondary group-hover:border-white/20 transition-colors">Ctrl P</kbd>
           </div>
         </div>
       </div>
 
       {/* Right Controls */}
       <div className="flex items-center justify-end gap-1 no-drag w-1/3">
-        <button
+        <Button
+          variant="icon"
+          size="icon"
           onClick={() => setShowAbout(true)}
-          className="p-1.5 rounded-md hover:bg-surface-hover transition-colors text-text-muted hover:text-text-primary mr-1"
+          className="mr-1 w-7 h-7"
           title="About Adnify"
         >
           <HelpCircle className="w-3.5 h-3.5" />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="icon"
+          size="icon"
           onClick={() => window.electronAPI.newWindow()}
-          className="p-1.5 rounded-md hover:bg-surface-hover transition-colors text-text-muted hover:text-text-primary mr-1"
+          className="mr-1 w-7 h-7"
           title="New Window (Ctrl+Shift+N)"
         >
           <Plus className="w-3.5 h-3.5" />
-        </button>
+        </Button>
 
         <div className="h-4 w-[1px] bg-border-subtle mx-1" />
 
-        <button
+        <Button
+          variant="icon"
+          size="icon"
           onClick={() => window.electronAPI.minimize()}
-          className="p-1.5 rounded-md hover:bg-surface-hover transition-colors text-text-muted hover:text-text-primary"
+          className="w-7 h-7"
         >
           <Minus className="w-3.5 h-3.5" />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="icon"
+          size="icon"
           onClick={() => window.electronAPI.maximize()}
-          className="p-1.5 rounded-md hover:bg-surface-hover transition-colors text-text-muted hover:text-text-primary"
+          className="w-7 h-7"
         >
           <Square className="w-3 h-3" />
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="icon"
+          size="icon"
           onClick={() => window.electronAPI.close()}
-          className="p-1.5 rounded-md hover:bg-status-error hover:text-white transition-colors text-text-muted"
+          className="w-7 h-7 hover:bg-status-error hover:text-white"
         >
           <X className="w-3.5 h-3.5" />
-        </button>
+        </Button>
       </div>
     </div>
   )

@@ -5,12 +5,12 @@
 
 import { useStore } from '../store'
 import { LargeFileInfo } from '../store/slices/fileSlice'
-import { 
-  getFileInfo, 
-  getLargeFileWarning, 
+import {
+  getFileInfo,
+  getLargeFileWarning,
   isLargeFile
 } from '../services/largeFileService'
-import { toast } from '../components/Toast'
+import { toast } from '../components/ToastProvider'
 
 // ============ 配置常量 ============
 
@@ -68,10 +68,10 @@ export function detectLargeFile(content: string, filePath: string, language: 'en
   if (!isLargeFile(content)) {
     return undefined
   }
-  
+
   const info = getFileInfo(filePath, content)
   const warning = getLargeFileWarning(info, language)
-  
+
   return {
     isLarge: info.isLarge,
     isVeryLarge: info.isVeryLarge,
@@ -95,24 +95,24 @@ export async function safeOpenFile(
     language = 'en',
     originalContent,
   } = options
-  
+
   const { openFile, setActiveFile } = useStore.getState()
-  
+
   // 1. 检查二进制文件
   if (isBinaryFile(filePath)) {
-    const msg = language === 'zh' 
-      ? '无法打开二进制文件' 
+    const msg = language === 'zh'
+      ? '无法打开二进制文件'
       : 'Cannot open binary file'
     if (showWarning) {
       toast.warning(msg, filePath.split(/[\\/]/).pop() || filePath)
     }
     return { success: false, error: msg, isBinary: true }
   }
-  
+
   try {
     // 2. 读取文件内容
     const content = await window.electronAPI.readFile(filePath)
-    
+
     if (content === null) {
       const msg = language === 'zh' ? '文件不存在' : 'File not found'
       if (showWarning) {
@@ -120,39 +120,39 @@ export async function safeOpenFile(
       }
       return { success: false, error: msg }
     }
-    
+
     // 3. 检查文件大小
     if (content.length > FILE_CONFIG.maxFileSize) {
-      const msg = language === 'zh' 
-        ? '文件太大，无法打开' 
+      const msg = language === 'zh'
+        ? '文件太大，无法打开'
         : 'File is too large to open'
       if (showWarning) {
         toast.error(msg, `${(content.length / 1024 / 1024).toFixed(1)} MB`)
       }
       return { success: false, error: msg, isLargeFile: true }
     }
-    
+
     // 4. 大文件确认
     if (confirmLargeFile && content.length > FILE_CONFIG.confirmThreshold) {
       const { globalConfirm } = await import('../components/ConfirmDialog')
       const { t } = await import('../i18n')
       const size = (content.length / 1024 / 1024).toFixed(1)
-      
+
       const confirmed = await globalConfirm({
         title: language === 'zh' ? '大文件警告' : 'Large File Warning',
         message: t('confirmLargeFile', language, { size }),
         confirmText: language === 'zh' ? '继续' : 'Continue',
         variant: 'warning',
       })
-      
+
       if (!confirmed) {
         return { success: false, error: 'Cancelled by user', isLargeFile: true }
       }
     }
-    
+
     // 5. 检测大文件信息
     const largeFileInfo = detectLargeFile(content, filePath, language)
-    
+
     // 6. 显示大文件警告
     if (showWarning && largeFileInfo?.warning) {
       toast.warning(
@@ -160,19 +160,19 @@ export async function safeOpenFile(
         largeFileInfo.warning
       )
     }
-    
+
     // 7. 打开文件
     openFile(filePath, content, originalContent, {
       largeFileInfo,
       encoding: 'utf-8', // TODO: 检测实际编码
     })
     setActiveFile(filePath)
-    
-    return { 
-      success: true, 
-      isLargeFile: largeFileInfo?.isLarge 
+
+    return {
+      success: true,
+      isLargeFile: largeFileInfo?.isLarge
     }
-    
+
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Unknown error'
     if (showWarning) {
@@ -194,7 +194,7 @@ export async function safeOpenFiles(
 ): Promise<{ opened: number; failed: number }> {
   const maxFiles = 10 // 最多同时打开 10 个文件
   const language = options.language || 'en'
-  
+
   if (filePaths.length > maxFiles) {
     const msg = language === 'zh'
       ? `最多同时打开 ${maxFiles} 个文件`
@@ -202,30 +202,30 @@ export async function safeOpenFiles(
     toast.warning(msg)
     filePaths = filePaths.slice(0, maxFiles)
   }
-  
+
   let opened = 0
   let failed = 0
-  
+
   for (const filePath of filePaths) {
     const result = await safeOpenFile(filePath, {
       ...options,
       showWarning: false, // 批量打开时不显示单个警告
       confirmLargeFile: false, // 批量打开时不确认
     })
-    
+
     if (result.success) {
       opened++
     } else {
       failed++
     }
   }
-  
+
   if (failed > 0) {
     toast.warning(
       language === 'zh' ? '部分文件打开失败' : 'Some files failed to open',
       `${opened}/${filePaths.length}`
     )
   }
-  
+
   return { opened, failed }
 }

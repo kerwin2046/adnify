@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react'
 import {
   ChevronRight, ChevronLeft, Check, Sparkles, Palette,
-  Globe, Cpu, FolderOpen, Rocket, HardDrive
+  Globe, Cpu, FolderOpen, Rocket, HardDrive, Eye, EyeOff
 } from 'lucide-react'
 import { useStore, LLMConfig } from '../store'
 import { Language } from '../i18n'
@@ -14,6 +14,7 @@ import { themeManager, Theme } from '../config/themeConfig'
 import { BUILTIN_PROVIDERS, BuiltinProviderName } from '../types/provider'
 import { Logo } from './Logo'
 import { adnifyDir } from '../services/adnifyDirService'
+import { Button, Input, Select } from './ui'
 
 interface OnboardingWizardProps {
   onComplete: () => void
@@ -134,10 +135,10 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
               <React.Fragment key={step}>
                 <div
                   className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${index < currentStepIndex
-                      ? 'bg-accent'
-                      : index === currentStepIndex
-                        ? 'bg-accent scale-125'
-                        : 'bg-surface-active'
+                    ? 'bg-accent'
+                    : index === currentStepIndex
+                      ? 'bg-accent scale-125'
+                      : 'bg-surface-active'
                     }`}
                 />
                 {index < STEPS.length - 2 && (
@@ -219,8 +220,8 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
               onClick={goPrev}
               disabled={currentStepIndex === 0}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-all ${currentStepIndex === 0
-                  ? 'opacity-0 pointer-events-none'
-                  : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'
+                ? 'opacity-0 pointer-events-none'
+                : 'text-text-muted hover:text-text-primary hover:bg-surface-hover'
                 }`}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -228,22 +229,22 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
             </button>
 
             {currentStep === 'complete' ? (
-              <button
+              <Button
                 onClick={handleComplete}
                 className="flex items-center gap-2 px-6 py-2.5 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm font-medium transition-all shadow-glow"
               >
                 <Rocket className="w-4 h-4" />
                 {isZh ? '开始使用' : 'Get Started'}
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
                 onClick={goNext}
                 disabled={!canProceed()}
                 className="flex items-center gap-2 px-6 py-2.5 bg-accent hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-sm font-medium transition-all shadow-glow"
               >
                 {isZh ? '下一步' : 'Next'}
                 <ChevronRight className="w-4 h-4" />
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -327,8 +328,8 @@ function LanguageStep({
             key={lang.id}
             onClick={() => onSelect(lang.id)}
             className={`relative p-5 rounded-xl border-2 text-left transition-all ${selectedLanguage === lang.id
-                ? 'border-accent bg-accent/5'
-                : 'border-border-subtle hover:border-text-muted bg-surface/50'
+              ? 'border-accent bg-accent/5'
+              : 'border-border-subtle hover:border-text-muted bg-surface/50'
               }`}
           >
             <div className="text-2xl mb-2">{lang.id === 'zh' ? '🇨🇳' : '🇺🇸'}</div>
@@ -375,8 +376,8 @@ function ThemeStep({
             key={theme.id}
             onClick={() => onSelect(theme.id)}
             className={`relative p-4 rounded-xl border-2 text-left transition-all ${selectedTheme === theme.id
-                ? 'border-accent bg-accent/5'
-                : 'border-border-subtle hover:border-text-muted bg-surface/50'
+              ? 'border-accent bg-accent/5'
+              : 'border-border-subtle hover:border-text-muted bg-surface/50'
               }`}
           >
             {/* 主题预览 */}
@@ -460,8 +461,8 @@ function ProviderStep({
                 baseUrl: undefined
               })}
               className={`px-3 py-2.5 rounded-lg border text-sm transition-all ${config.provider === p.name
-                  ? 'border-accent bg-accent/10 text-accent'
-                  : 'border-border-subtle hover:border-text-muted text-text-muted bg-surface/50'
+                ? 'border-accent bg-accent/10 text-accent'
+                : 'border-border-subtle hover:border-text-muted text-text-muted bg-surface/50'
                 }`}
             >
               {p.displayName}
@@ -470,8 +471,8 @@ function ProviderStep({
           <button
             onClick={() => setConfig({ ...config, provider: 'custom' as any, model: '' })}
             className={`px-3 py-2.5 rounded-lg border text-sm transition-all ${config.provider === 'custom'
-                ? 'border-accent bg-accent/10 text-accent'
-                : 'border-border-subtle hover:border-text-muted text-text-muted bg-surface/50'
+              ? 'border-accent bg-accent/10 text-accent'
+              : 'border-border-subtle hover:border-text-muted text-text-muted bg-surface/50'
               }`}
           >
             Custom
@@ -485,15 +486,12 @@ function ProviderStep({
           <label className="text-sm font-medium text-text-primary mb-2 block">
             {isZh ? '模型' : 'Model'}
           </label>
-          <select
+          <Select
             value={config.model}
-            onChange={(e) => setConfig({ ...config, model: e.target.value })}
-            className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-accent"
-          >
-            {selectedProvider.defaultModels.map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+            onChange={(value) => setConfig({ ...config, model: value })}
+            options={selectedProvider.defaultModels.map(m => ({ value: m, label: m }))}
+            className="w-full"
+          />
         </div>
       )}
 
@@ -506,19 +504,19 @@ function ProviderStep({
           </span>
         </label>
         <div className="relative">
-          <input
+          <Input
             type={showApiKey ? 'text' : 'password'}
             value={config.apiKey}
             onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
             placeholder={selectedProvider?.apiKeyPlaceholder || 'sk-...'}
-            className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-accent pr-10"
+            className="w-full pr-10"
           />
           <button
             type="button"
             onClick={() => setShowApiKey(!showApiKey)}
             className="absolute right-3 top-2.5 text-text-muted hover:text-text-primary"
           >
-            {showApiKey ? '🙈' : '👁️'}
+            {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
           </button>
         </div>
         {selectedProvider?.apiKeyUrl && (
@@ -540,12 +538,12 @@ function ProviderStep({
             {isZh ? '自定义端点' : 'Custom Endpoint'}
             <span className="text-text-muted font-normal ml-2">({isZh ? '可选' : 'optional'})</span>
           </label>
-          <input
+          <Input
             type="text"
             value={config.baseUrl || ''}
             onChange={(e) => setConfig({ ...config, baseUrl: e.target.value || undefined })}
             placeholder="https://api.example.com/v1"
-            className="w-full bg-surface border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-text-primary focus:outline-none focus:border-accent"
+            className="w-full"
           />
         </div>
       )}
@@ -599,15 +597,16 @@ function DataPathStep({
             <div className="flex-1 bg-surface border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-text-secondary font-mono truncate">
               {dataPath || (isZh ? '加载中...' : 'Loading...')}
             </div>
-            <button
+            <Button
               onClick={handleChangePath}
               disabled={loading}
-              className="px-4 py-2 bg-surface hover:bg-surface-hover border border-border-subtle rounded-lg text-sm text-text-primary transition-colors disabled:opacity-50 whitespace-nowrap"
+              variant="secondary"
+              className="whitespace-nowrap"
             >
               {loading
                 ? (isZh ? '处理中...' : 'Processing...')
                 : (isZh ? '更改目录' : 'Change')}
-            </button>
+            </Button>
           </div>
         </div>
 

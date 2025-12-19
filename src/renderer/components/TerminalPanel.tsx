@@ -350,8 +350,9 @@ export default function TerminalPanel() {
                         </div>
                         <div className="flex items-center overflow-x-auto no-scrollbar flex-1 h-full pl-1">
                             {terminals.map(term => (
-                                <div key={term.id} onClick={() => setActiveId(term.id)} className={`flex items-center gap-2 px-3 h-[80%] my-auto rounded-md text-xs cursor-pointer min-w-[120px] max-w-[200px] flex-shrink-0 group transition-all mr-1 ${activeId === term.id ? 'bg-surface text-text-primary shadow-sm' : 'text-text-muted hover:bg-surface-hover hover:text-text-secondary'}`}>
+                                <div key={term.id} onClick={() => setActiveId(term.id)} className={`relative flex items-center gap-2 px-3 h-full my-auto text-xs cursor-pointer min-w-[120px] max-w-[200px] flex-shrink-0 group transition-all mr-1 border-r border-white/5 ${activeId === term.id ? 'bg-surface/50 text-text-primary' : 'text-text-muted hover:bg-surface-hover/50 hover:text-text-secondary'}`}>
                                     <span className="truncate flex-1">{term.name}</span>
+                                    {activeId === term.id && <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-accent shadow-[0_0_8px_rgba(139,92,246,0.6)]" />}
                                     <Button
                                         variant="ghost"
                                         size="icon"

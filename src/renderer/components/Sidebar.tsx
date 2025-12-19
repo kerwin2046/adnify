@@ -13,7 +13,7 @@ import { t } from '../i18n'
 import { getFileName, getDirPath, joinPath } from '../utils/pathUtils'
 import { gitService, GitStatus, GitCommit } from '../agent/gitService'
 import { getEditorConfig } from '../config/editorConfig'
-import { toast } from './Toast'
+import { toast } from './ToastProvider'
 import { onDiagnostics, getDocumentSymbols } from '../services/lspService'
 import { adnifyDir } from '../services/adnifyDirService'
 import { directoryCacheService } from '../services/directoryCacheService'
@@ -610,13 +610,13 @@ function ExplorerView() {
                             <FolderOpen className="w-6 h-6 text-text-muted" />
                         </div>
                         <p className="text-sm text-text-muted mb-4 font-medium">{t('noFolderOpened', language)}</p>
-                        <button
+                        <Button
                             onClick={handleOpenFolder}
                             className="flex items-center gap-2 px-4 py-2 bg-accent text-white text-xs font-medium rounded-lg hover:bg-accent-hover transition-colors shadow-glow"
                         >
                             <Plus className="w-3.5 h-3.5" />
                             {t('openFolder', language)}
-                        </button>
+                        </Button>
                     </div>
                 )}
             </div>
@@ -896,15 +896,14 @@ function SearchView() {
                         </button>
                     </div>
                     <div className="relative flex-1 ml-5">
-                        <input
-                            type="text"
+                        <Input
                             value={query}
                             onChange={(e) => setQuery(e.target.value)}
                             onKeyDown={handleKeyDown}
                             onFocus={() => searchHistory.length > 0 && setShowHistory(true)}
                             onBlur={() => setTimeout(() => setShowHistory(false), 200)}
                             placeholder={t('searchPlaceholder', language)}
-                            className="w-full bg-black/20 border border-white/5 rounded-md py-1.5 pl-2 pr-20 text-xs text-text-primary focus:border-accent/50 focus:bg-black/40 focus:ring-1 focus:ring-accent/50 focus:outline-none transition-all placeholder:text-text-muted/50"
+                            className="w-full h-8 text-xs"
                         />
 
                         {/* Search History Dropdown */}
@@ -968,12 +967,11 @@ function SearchView() {
                 {/* Replace Input Box */}
                 {showReplace && (
                     <div className="relative flex items-center ml-5 animate-slide-in gap-1">
-                        <input
-                            type="text"
+                        <Input
                             value={replaceQuery}
                             onChange={(e) => setReplaceQuery(e.target.value)}
                             placeholder={t('replacePlaceholder', language)}
-                            className="flex-1 bg-surface/50 border border-transparent rounded-md py-1.5 pl-2 pr-2 text-xs text-text-primary focus:border-accent focus:bg-surface focus:ring-1 focus:ring-accent focus:outline-none transition-all placeholder:text-text-muted/50"
+                            className="flex-1 h-8 text-xs"
                         />
                         <button
                             onClick={handleReplaceInFile}
@@ -1013,12 +1011,11 @@ function SearchView() {
 
                     {showDetails && (
                         <div className="flex flex-col gap-2 animate-slide-in">
-                            <input
-                                type="text"
+                            <Input
                                 value={excludePattern}
                                 onChange={(e) => setExcludePattern(e.target.value)}
                                 placeholder={t('excludePlaceholder', language)}
-                                className="w-full bg-surface/50 border border-transparent rounded-md py-1 px-2 text-xs text-text-primary focus:border-accent focus:bg-surface focus:outline-none transition-all"
+                                className="w-full h-7 text-xs"
                             />
                         </div>
                     )}
@@ -1264,12 +1261,12 @@ function GitView() {
                     <GitBranch className="w-6 h-6 text-text-muted opacity-50" />
                 </div>
                 <p className="text-xs text-text-muted mb-4">No source control active.</p>
-                <button
+                <Button
                     onClick={handleInit}
                     className="px-4 py-2 bg-accent text-white text-xs font-medium rounded hover:bg-accent-hover transition-colors shadow-glow"
                 >
                     Initialize Repository
-                </button>
+                </Button>
                 {error && <p className="text-[10px] text-status-error mt-2">{error}</p>}
             </div>
         )
@@ -1285,25 +1282,35 @@ function GitView() {
                     Source Control
                 </span>
                 <div className="flex items-center gap-0.5">
-                    <button
+                    <Button
+                        variant="icon"
+                        size="icon"
                         onClick={handlePull}
                         disabled={isPulling}
-                        className="p-1 hover:bg-surface-active rounded transition-colors disabled:opacity-50"
                         title="Pull"
+                        className="w-6 h-6"
                     >
-                        <ArrowRight className={`w-3.5 h-3.5 text-text-muted hover:text-text-primary rotate-90 ${isPulling ? 'animate-pulse' : ''}`} />
-                    </button>
-                    <button
+                        <ArrowRight className={`w-3.5 h-3.5 rotate-90 ${isPulling ? 'animate-pulse' : ''}`} />
+                    </Button>
+                    <Button
+                        variant="icon"
+                        size="icon"
                         onClick={handlePush}
                         disabled={isPushing}
-                        className="p-1 hover:bg-surface-active rounded transition-colors disabled:opacity-50"
                         title="Push"
+                        className="w-6 h-6"
                     >
-                        <ArrowRight className={`w-3.5 h-3.5 text-text-muted hover:text-text-primary -rotate-90 ${isPushing ? 'animate-pulse' : ''}`} />
-                    </button>
-                    <button onClick={refreshStatus} className={`p-1 hover:bg-surface-active rounded transition-colors ${isRefreshing ? 'animate-spin' : ''}`} title="Refresh">
-                        <RefreshCw className="w-3.5 h-3.5 text-text-muted hover:text-text-primary" />
-                    </button>
+                        <ArrowRight className={`w-3.5 h-3.5 -rotate-90 ${isPushing ? 'animate-pulse' : ''}`} />
+                    </Button>
+                    <Button
+                        variant="icon"
+                        size="icon"
+                        onClick={refreshStatus}
+                        title="Refresh"
+                        className="w-6 h-6"
+                    >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                    </Button>
                 </div>
             </div>
 
@@ -1326,12 +1333,11 @@ function GitView() {
                                 <div className="p-2 border-b border-border-subtle">
                                     {showNewBranch ? (
                                         <div className="flex items-center gap-1">
-                                            <input
-                                                type="text"
+                                            <Input
                                                 value={newBranchName}
                                                 onChange={(e) => setNewBranchName(e.target.value)}
                                                 placeholder="Branch name"
-                                                className="flex-1 bg-black/20 border border-white/5 rounded px-2 py-1 text-xs focus:outline-none focus:border-accent/50 focus:bg-black/40 text-text-primary"
+                                                className="flex-1 h-7 text-xs"
                                                 onKeyDown={(e) => {
                                                     if (e.key === 'Enter') handleCreateBranch()
                                                     if (e.key === 'Escape') setShowNewBranch(false)
@@ -1403,14 +1409,14 @@ function GitView() {
                             }}
                         />
                     </div>
-                    <button
+                    <Button
                         onClick={handleCommit}
                         disabled={isCommitting || (status?.staged.length === 0)}
-                        className="w-full mt-2 py-1.5 bg-accent/90 text-white text-xs font-medium rounded hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm flex items-center justify-center gap-2"
+                        className="w-full mt-2 flex items-center justify-center gap-2"
                     >
                         {isCommitting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                         {isCommitting ? 'Committing...' : 'Commit'}
-                    </button>
+                    </Button>
                 </div>
 
                 {!hasChanges && status && (
