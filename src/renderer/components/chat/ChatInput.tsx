@@ -60,7 +60,7 @@ export default function ChatInput({
   textareaRef,
   inputContainerRef,
 }: ChatInputProps) {
-  const { language } = useStore()
+  const { language, editorConfig } = useStore()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [isFocused, setIsFocused] = useState(false)
 
@@ -194,7 +194,7 @@ export default function ChatInput({
                        text-sm text-text-primary placeholder-text-muted/60 resize-none
                        focus:ring-0 focus:outline-none leading-relaxed custom-scrollbar max-h-[200px] caret-accent"
             rows={1}
-            style={{ minHeight: '36px' }}
+            style={{ minHeight: '36px', fontSize: `${editorConfig.fontSize}px` }}
           />
 
           <div className="flex items-center gap-1 pb-0.5">

@@ -1205,7 +1205,14 @@ class AgentServiceClass {
         if (lintResult.success && lintResult.result) {
           const result = lintResult.result.trim()
           if (result && result !== '[]' && result !== 'No diagnostics found') {
-            errors.push(`File: ${filePath}\n${result}`)
+            // 简单检查是否包含 "error" 关键字，避免警告触发
+            const hasActualError = result.toLowerCase().includes('error') ||
+              result.toLowerCase().includes('failed') ||
+              result.toLowerCase().includes('syntax')
+
+            if (hasActualError) {
+              errors.push(`File: ${filePath}\n${result}`)
+            }
           }
         }
       } catch (e) { }

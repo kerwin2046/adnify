@@ -3,7 +3,7 @@
  * Cursor 风格：完全扁平化，无气泡，沉浸式体验
  */
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback } from 'react'
 import { User, Copy, Check, RefreshCw, Edit2, RotateCcw, FileText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -23,7 +23,7 @@ import FileChangeCard from './FileChangeCard'
 import ToolCallCard from './ToolCallCard'
 import ToolCallGroup from './ToolCallGroup'
 import { WRITE_TOOLS } from '../../agent/core/ToolExecutor'
-import { getEditorConfig } from '../../config/editorConfig'
+import { useStore } from '../../store'
 
 interface ChatMessageProps {
   message: ChatMessageType
@@ -198,12 +198,8 @@ const ChatMessage = React.memo(({
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState('')
   const [copied, setCopied] = useState(false)
-  const [fontSize, setFontSize] = useState(14)
-
-  useEffect(() => {
-    const config = getEditorConfig()
-    setFontSize(config.fontSize)
-  }, [])
+  const { editorConfig } = useStore()
+  const fontSize = editorConfig.fontSize
 
   if (!isUserMessage(message) && !isAssistantMessage(message)) {
     return null

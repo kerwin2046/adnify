@@ -569,360 +569,362 @@ export default function ChatPanel() {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      {/* Context Length Warning Modal */}
-      {showContextWarning && (
-        <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center animate-fade-in">
-          <div className="max-w-md p-6 rounded-2xl border border-warning/20 bg-surface/95 shadow-2xl shadow-warning/10 animate-scale-in">
-            <div className="flex items-start gap-4 mb-4">
-              <div className="p-2 rounded-full bg-warning/10 border border-warning/20">
-                <AlertTriangle className="w-5 h-5 text-warning" />
+      <div className="flex flex-col h-full">
+        {/* Context Length Warning Modal */}
+        {showContextWarning && (
+          <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center animate-fade-in">
+            <div className="max-w-md p-6 rounded-2xl border border-warning/20 bg-surface/95 shadow-2xl shadow-warning/10 animate-scale-in">
+              <div className="flex items-start gap-4 mb-4">
+                <div className="p-2 rounded-full bg-warning/10 border border-warning/20">
+                  <AlertTriangle className="w-5 h-5 text-warning" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-text-primary mb-1">
+                    {language === 'zh' ? '对话较长' : 'Long Conversation'}
+                  </h3>
+                  <p className="text-sm text-text-muted leading-relaxed">
+                    {language === 'zh'
+                      ? '当前对话已较长，继续可能影响响应质量。建议开始新对话以获得最佳效果。'
+                      : 'This conversation is getting long. Starting a new chat may improve response quality.'}
+                  </p>
+                </div>
               </div>
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setShowContextWarning(false)
+                    const submitWithoutCheck = async () => {
+                      let userMessage: string | Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }> = input.trim()
+                      if (images.length > 0) {
+                        const readyImages = images.filter(img => img.base64)
+                        userMessage = [
+                          { type: 'text' as const, text: input.trim() },
+                          ...readyImages.map(img => ({
+                            type: 'image' as const,
+                            source: { type: 'base64' as const, media_type: img.file.type, data: img.base64! },
+                          })),
+                        ]
+                      }
+                      setInput('')
+                      setImages([])
+                      await sendMessage(userMessage)
+                    }
+                    submitWithoutCheck()
+                  }}
+                >
+                  {language === 'zh' ? '继续发送' : 'Continue Anyway'}
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setShowContextWarning(false)
+                    createThread()
+                    toast.success(language === 'zh' ? '已创建新对话' : 'New chat created')
+                  }}
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  {language === 'zh' ? '开始新对话' : 'Start New Chat'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Background Decoration */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] bg-purple-500/5 rounded-full blur-[100px] opacity-20" />
+          <div className="absolute bottom-[-10%] left-[-10%] w-[400px] h-[400px] bg-blue-500/5 rounded-full blur-[100px] opacity-20" />
+        </div>
+
+        {/* Header */}
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2.5 bg-background/60 backdrop-blur-md border-b border-border-subtle select-none">
+          <div className="flex items-center gap-3">
+            {contextStats && (
+              <ChatContextStats stats={contextStats} language={language} compact />
+            )}
+          </div>
+
+          <div className="flex items-center gap-1">
+            {plan && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowPlan(!showPlan)}
+                className={`h-7 px-2 text-xs font-medium transition-colors ${showPlan ? 'text-accent bg-accent/10' : 'text-text-muted hover:text-text-primary'}`}
+                title={showPlan ? 'Hide Plan' : 'Show Plan'}
+              >
+                Plan
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setShowThreads(!showThreads)}
+              title="Chat history"
+              className="hover:bg-surface/20 text-text-muted hover:text-text-primary"
+            >
+              <History className="w-4 h-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => createThread()}
+              title="New chat"
+              className="hover:bg-surface/20 text-text-muted hover:text-text-primary"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+            <div className="w-px h-4 bg-border-subtle mx-1" />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={clearMessages}
+              className="hover:bg-red-500/10 hover:text-red-500 text-text-muted"
+              title="Clear chat"
+            >
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Thread list overlay */}
+        {showThreads && (
+          <div className="absolute top-[60px] right-0 left-0 bottom-0 bg-background/95 backdrop-blur-md z-30 overflow-hidden p-4 animate-fade-in">
+            <div className="flex flex-col gap-2 max-w-2xl mx-auto">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-text-primary">Chat History</h3>
+                <Button variant="ghost" size="icon" onClick={() => setShowThreads(false)} className="h-6 w-6">
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              {threads.map((thread: ChatThread) => {
+                if (!thread) return null
+                const firstUserMsg = thread.messages.find((m: ChatMessageType) => m.role === 'user')
+                const preview = firstUserMsg ? getMessageText(firstUserMsg.content).slice(0, 50) : 'New chat'
+                return (
+                  <div
+                    key={thread.id}
+                    className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all duration-200 border group ${currentThreadId === thread.id
+                      ? 'bg-accent/10 border-accent/20 text-accent'
+                      : 'bg-surface/30 border-border-subtle hover:border-border hover:bg-surface/50 text-text-secondary'
+                      }`}
+                    onClick={() => { switchThread(thread.id); setShowThreads(false) }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{preview || 'New chat'}</p>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        {new Date(thread.lastModified).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => { e.stopPropagation(); deleteThread(thread.id) }}
+                      className="h-8 w-8 hover:bg-red-500/10 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Drag Overlay */}
+        {isDragging && (
+          <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center pointer-events-none animate-fade-in">
+            <div className="flex flex-col items-center gap-4 p-8 rounded-3xl border border-accent/30 bg-surface/90 shadow-2xl shadow-accent/20 transform scale-100 animate-scale-in">
+              <div className="p-5 rounded-full bg-accent/10 border border-accent/20 relative">
+                <div className="absolute inset-0 bg-accent/20 blur-xl rounded-full animate-pulse" />
+                <Upload className="w-10 h-10 text-accent relative z-10" />
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-medium text-text-primary mb-1">{language === 'zh' ? '释放以添加文件' : 'Drop files to add context'}</p>
+                <p className="text-sm text-text-muted">{language === 'zh' ? '支持代码和图片' : 'Supports code and images'}</p>
+              </div>
+            </div>
+          </div>
+        )
+        }
+
+        {/* Messages Area */}
+        <div className="flex-1 min-h-0 relative z-0 flex flex-col pt-14">
+          {/* Plan View */}
+          {plan && showPlan && (
+            <div className="h-1/3 min-h-[240px] shrink-0 z-10">
+              <PlanList
+                plan={plan}
+                onUpdateStatus={handleStartPlan}
+                onUpdateItem={updatePlanItem}
+                onAddItem={addPlanItem}
+                onDeleteItem={deletePlanItem}
+                onSetStep={handleExecutePlanStep}
+              />
+            </div>
+          )}
+          {/* API Key Warning */}
+          {!hasApiKey && (
+            <div className="m-4 p-4 border border-warning/20 bg-warning/5 rounded-xl flex gap-3 backdrop-blur-sm relative z-10">
+              <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0" />
               <div>
-                <h3 className="text-lg font-semibold text-text-primary mb-1">
-                  {language === 'zh' ? '对话较长' : 'Long Conversation'}
-                </h3>
-                <p className="text-sm text-text-muted leading-relaxed">
-                  {language === 'zh'
-                    ? '当前对话已较长，继续可能影响响应质量。建议开始新对话以获得最佳效果。'
-                    : 'This conversation is getting long. Starting a new chat may improve response quality.'}
+                <span className="font-medium text-sm text-warning block mb-1">{t('setupRequired', language)}</span>
+                <p className="text-xs text-text-muted">{t('setupRequiredDesc', language)}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Empty State */}
+          {messages.length === 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 animate-fade-in select-none">
+              <div className="relative mb-8">
+                <div className="absolute inset-0 bg-accent/20 blur-3xl rounded-full animate-pulse" />
+                <div className="relative w-16 h-16 bg-surface/40 backdrop-blur-2xl rounded-2xl border border-border-subtle flex items-center justify-center shadow-2xl">
+                  <Logo className="w-8 h-8 text-accent opacity-80" glow />
+                </div>
+              </div>
+              <div className="text-center space-y-2">
+                <h1 className="text-xl font-bold text-text-primary tracking-tight opacity-90">
+                  Adnify Agent
+                </h1>
+                <p className="text-sm text-text-muted max-w-[280px] leading-relaxed opacity-60">
+                  {language === 'zh' ? '今天我能帮你构建什么？' : 'What can I help you build today?'}
                 </p>
               </div>
             </div>
-            <div className="flex gap-3 justify-end">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  setShowContextWarning(false)
-                  const submitWithoutCheck = async () => {
-                    let userMessage: string | Array<{ type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }> = input.trim()
-                    if (images.length > 0) {
-                      const readyImages = images.filter(img => img.base64)
-                      userMessage = [
-                        { type: 'text' as const, text: input.trim() },
-                        ...readyImages.map(img => ({
-                          type: 'image' as const,
-                          source: { type: 'base64' as const, media_type: img.file.type, data: img.base64! },
-                        })),
-                      ]
-                    }
-                    setInput('')
-                    setImages([])
-                    await sendMessage(userMessage)
-                  }
-                  submitWithoutCheck()
-                }}
-              >
-                {language === 'zh' ? '继续发送' : 'Continue Anyway'}
-              </Button>
-              <Button
-                variant="primary"
-                onClick={() => {
-                  setShowContextWarning(false)
-                  createThread()
-                  toast.success(language === 'zh' ? '已创建新对话' : 'New chat created')
-                }}
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                {language === 'zh' ? '开始新对话' : 'Start New Chat'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Background Decoration */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] bg-purple-500/5 rounded-full blur-[100px] opacity-20" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[400px] h-[400px] bg-blue-500/5 rounded-full blur-[100px] opacity-20" />
-      </div>
-
-      {/* Header */}
-      <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-4 py-2.5 bg-background/60 backdrop-blur-md border-b border-border-subtle select-none">
-        <div className="flex items-center gap-3">
-          {contextStats && (
-            <ChatContextStats stats={contextStats} language={language} compact />
+          ) : (
+            <Virtuoso
+              ref={virtuosoRef}
+              data={messages}
+              atBottomStateChange={setAtBottom}
+              initialTopMostItemIndex={messages.length - 1}
+              followOutput={isStreaming ? 'smooth' : false}
+              itemContent={(_, message) => renderMessage(message)}
+              className="flex-1 custom-scrollbar"
+            />
           )}
         </div>
 
-        <div className="flex items-center gap-1">
-          {plan && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowPlan(!showPlan)}
-              className={`h-7 px-2 text-xs font-medium transition-colors ${showPlan ? 'text-accent bg-accent/10' : 'text-text-muted hover:text-text-primary'}`}
-              title={showPlan ? 'Hide Plan' : 'Show Plan'}
-            >
-              Plan
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setShowThreads(!showThreads)}
-            title="Chat history"
-            className="hover:bg-surface/20 text-text-muted hover:text-text-primary"
-          >
-            <History className="w-4 h-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => createThread()}
-            title="New chat"
-            className="hover:bg-surface/20 text-text-muted hover:text-text-primary"
-          >
-            <Plus className="w-4 h-4" />
-          </Button>
-          <div className="w-px h-4 bg-border-subtle mx-1" />
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={clearMessages}
-            className="hover:bg-red-500/10 hover:text-red-500 text-text-muted"
-            title="Clear chat"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
-        </div>
-      </div>
+        {/* File Mention Popup */}
+        {
+          showFileMention && (
+            <MentionPopup
+              position={mentionPosition}
+              query={mentionQuery}
+              candidates={mentionCandidates}
+              loading={mentionLoading}
+              onSelect={handleSelectMention}
+              onClose={() => { setShowFileMention(false); setMentionQuery('') }}
+            />
+          )
+        }
 
-      {/* Thread list overlay */}
-      {showThreads && (
-        <div className="absolute top-[60px] right-0 left-0 bottom-0 bg-background/95 backdrop-blur-md z-30 overflow-hidden p-4 animate-fade-in">
-          <div className="flex flex-col gap-2 max-w-2xl mx-auto">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-sm font-medium text-text-primary">Chat History</h3>
-              <Button variant="ghost" size="icon" onClick={() => setShowThreads(false)} className="h-6 w-6">
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
-            {threads.map((thread: ChatThread) => {
-              if (!thread) return null
-              const firstUserMsg = thread.messages.find((m: ChatMessageType) => m.role === 'user')
-              const preview = firstUserMsg ? getMessageText(firstUserMsg.content).slice(0, 50) : 'New chat'
-              return (
-                <div
-                  key={thread.id}
-                  className={`flex items-center justify-between p-3 rounded-xl cursor-pointer transition-all duration-200 border group ${currentThreadId === thread.id
-                    ? 'bg-accent/10 border-accent/20 text-accent'
-                    : 'bg-surface/30 border-border-subtle hover:border-border hover:bg-surface/50 text-text-secondary'
-                    }`}
-                  onClick={() => { switchThread(thread.id); setShowThreads(false) }}
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{preview || 'New chat'}</p>
-                    <p className="text-xs text-text-muted mt-0.5">
-                      {new Date(thread.lastModified).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => { e.stopPropagation(); deleteThread(thread.id) }}
-                    className="h-8 w-8 hover:bg-red-500/10 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
+        {/* Bottom Input Area - Unified Tray */}
+        <div className="shrink-0 z-20 flex flex-col">
+          <div className="mx-4 mb-4 bg-background/80 backdrop-blur-2xl border border-border-subtle rounded-2xl shadow-2xl shadow-black/20 overflow-hidden flex flex-col">
+            {/* Status Bar */}
+            <AgentStatusBar
+              pendingChanges={pendingChanges}
+              isStreaming={isStreaming}
+              isAwaitingApproval={isAwaitingApproval}
+              streamingStatus={getStreamingStatus()}
+              onStop={abort}
+              onReviewFile={async (filePath) => {
+                const change = pendingChanges.find(c => c.filePath === filePath)
+                if (!change) return
 
-      {/* Drag Overlay */}
-      {isDragging && (
-        <div className="absolute inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center pointer-events-none animate-fade-in">
-          <div className="flex flex-col items-center gap-4 p-8 rounded-3xl border border-accent/30 bg-surface/90 shadow-2xl shadow-accent/20 transform scale-100 animate-scale-in">
-            <div className="p-5 rounded-full bg-accent/10 border border-accent/20 relative">
-              <div className="absolute inset-0 bg-accent/20 blur-xl rounded-full animate-pulse" />
-              <Upload className="w-10 h-10 text-accent relative z-10" />
-            </div>
-            <div className="text-center">
-              <p className="text-lg font-medium text-text-primary mb-1">{language === 'zh' ? '释放以添加文件' : 'Drop files to add context'}</p>
-              <p className="text-sm text-text-muted">{language === 'zh' ? '支持代码和图片' : 'Supports code and images'}</p>
-            </div>
-          </div>
-        </div>
-      )
-      }
+                const currentContent = await window.electronAPI.readFile(filePath)
+                if (currentContent !== null) {
+                  openFile(filePath, currentContent)
+                  setActiveFile(filePath)
+                  setActiveDiff({
+                    original: change.snapshot.content || '',
+                    modified: currentContent,
+                    filePath,
+                  })
+                }
+              }}
+              onAcceptFile={(filePath) => {
+                acceptChange(filePath)
+                toast.success(`Accepted: ${filePath.split(/[\\/]/).pop()}`)
+              }}
+              onRejectFile={async (filePath) => {
+                const success = await undoChange(filePath)
+                if (success) {
+                  toast.success(`Reverted: ${filePath.split(/[\\/]/).pop()}`)
+                } else {
+                  toast.error('Failed to revert')
+                }
+              }}
+              onUndoAll={async () => {
+                if (pendingChanges.length === 0) {
+                  toast.info('No changes to undo')
+                  return
+                }
+                const result = await undoAllChanges()
+                if (result.success && result.restoredFiles.length > 0) {
+                  toast.success(`Restored ${result.restoredFiles.length} file(s)`)
+                  setActiveDiff(null)
+                } else if (result.errors.length > 0) {
+                  toast.error(`Undo failed: ${result.errors[0]}`)
+                }
+              }}
+              onKeepAll={() => {
+                if (pendingChanges.length === 0) {
+                  toast.info('No changes to accept')
+                  return
+                }
+                acceptAllChanges()
+                setActiveDiff(null)
+                toast.success('Changes accepted')
+              }}
+            />
 
-      {/* Messages Area */}
-      <div className="absolute inset-0 overflow-hidden bg-transparent pt-14 pb-44 z-0 flex flex-col">
-        {/* Plan View */}
-        {plan && showPlan && (
-          <div className="h-1/3 min-h-[240px] shrink-0 z-10">
-            <PlanList
-              plan={plan}
-              onUpdateStatus={handleStartPlan}
-              onUpdateItem={updatePlanItem}
-              onAddItem={addPlanItem}
-              onDeleteItem={deletePlanItem}
-              onSetStep={handleExecutePlanStep}
+            {/* Context Items */}
+            <ContextPanel
+              contextItems={contextItems}
+              activeFilePath={activeFilePath}
+              onRemove={removeContextItem}
+              onClear={clearContextItems}
+              onAddCurrentFile={handleAddCurrentFile}
+            />
+
+            {/* Input */}
+            <ChatInput
+              input={input}
+              setInput={setInput}
+              images={images}
+              setImages={setImages}
+              isStreaming={isStreaming}
+              hasApiKey={hasApiKey}
+              hasPendingToolCall={isAwaitingApproval}
+              chatMode={chatMode}
+              setChatMode={setChatMode}
+              onSubmit={handleSubmit}
+              onAbort={abort}
+              onInputChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              textareaRef={textareaRef}
+              inputContainerRef={inputContainerRef}
             />
           </div>
-        )}
-        {/* API Key Warning */}
-        {!hasApiKey && (
-          <div className="m-4 p-4 border border-warning/20 bg-warning/5 rounded-xl flex gap-3 backdrop-blur-sm relative z-10">
-            <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0" />
-            <div>
-              <span className="font-medium text-sm text-warning block mb-1">{t('setupRequired', language)}</span>
-              <p className="text-xs text-text-muted">{t('setupRequiredDesc', language)}</p>
-            </div>
-          </div>
-        )}
 
-        {/* Empty State */}
-        {messages.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-8 animate-fade-in select-none">
-            <div className="relative mb-8">
-              <div className="absolute inset-0 bg-accent/20 blur-3xl rounded-full animate-pulse" />
-              <div className="relative w-16 h-16 bg-surface/40 backdrop-blur-2xl rounded-2xl border border-border-subtle flex items-center justify-center shadow-2xl">
-                <Logo className="w-8 h-8 text-accent opacity-80" glow />
-              </div>
-            </div>
-            <div className="text-center space-y-2">
-              <h1 className="text-xl font-bold text-text-primary tracking-tight opacity-90">
-                Adnify Agent
-              </h1>
-              <p className="text-sm text-text-muted max-w-[280px] leading-relaxed opacity-60">
-                {language === 'zh' ? '今天我能帮你构建什么？' : 'What can I help you build today?'}
-              </p>
-            </div>
-          </div>
-        ) : (
-          <Virtuoso
-            ref={virtuosoRef}
-            data={messages}
-            atBottomStateChange={setAtBottom}
-            initialTopMostItemIndex={messages.length - 1}
-            followOutput={isStreaming ? 'smooth' : false}
-            itemContent={(_, message) => renderMessage(message)}
-            className="flex-1 custom-scrollbar"
-          />
-        )}
-      </div>
-
-      {/* File Mention Popup */}
-      {
-        showFileMention && (
-          <MentionPopup
-            position={mentionPosition}
-            query={mentionQuery}
-            candidates={mentionCandidates}
-            loading={mentionLoading}
-            onSelect={handleSelectMention}
-            onClose={() => { setShowFileMention(false); setMentionQuery('') }}
-          />
-        )
-      }
-
-      {/* Bottom Input Area - Unified Tray */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col">
-        <div className="mx-4 mb-4 bg-background/80 backdrop-blur-2xl border border-border-subtle rounded-2xl shadow-2xl shadow-black/20 overflow-hidden flex flex-col">
-          {/* Status Bar */}
-          <AgentStatusBar
-            pendingChanges={pendingChanges}
-            isStreaming={isStreaming}
-            isAwaitingApproval={isAwaitingApproval}
-            streamingStatus={getStreamingStatus()}
-            onStop={abort}
-            onReviewFile={async (filePath) => {
-              const change = pendingChanges.find(c => c.filePath === filePath)
-              if (!change) return
-
-              const currentContent = await window.electronAPI.readFile(filePath)
-              if (currentContent !== null) {
-                openFile(filePath, currentContent)
-                setActiveFile(filePath)
-                setActiveDiff({
-                  original: change.snapshot.content || '',
-                  modified: currentContent,
-                  filePath,
-                })
-              }
-            }}
-            onAcceptFile={(filePath) => {
-              acceptChange(filePath)
-              toast.success(`Accepted: ${filePath.split(/[\\/]/).pop()}`)
-            }}
-            onRejectFile={async (filePath) => {
-              const success = await undoChange(filePath)
-              if (success) {
-                toast.success(`Reverted: ${filePath.split(/[\\/]/).pop()}`)
-              } else {
-                toast.error('Failed to revert')
-              }
-            }}
-            onUndoAll={async () => {
-              if (pendingChanges.length === 0) {
-                toast.info('No changes to undo')
-                return
-              }
-              const result = await undoAllChanges()
-              if (result.success && result.restoredFiles.length > 0) {
-                toast.success(`Restored ${result.restoredFiles.length} file(s)`)
-                setActiveDiff(null)
-              } else if (result.errors.length > 0) {
-                toast.error(`Undo failed: ${result.errors[0]}`)
-              }
-            }}
-            onKeepAll={() => {
-              if (pendingChanges.length === 0) {
-                toast.info('No changes to accept')
-                return
-              }
-              acceptAllChanges()
-              setActiveDiff(null)
-              toast.success('Changes accepted')
-            }}
-          />
-
-          {/* Context Items */}
-          <ContextPanel
-            contextItems={contextItems}
-            activeFilePath={activeFilePath}
-            onRemove={removeContextItem}
-            onClear={clearContextItems}
-            onAddCurrentFile={handleAddCurrentFile}
-          />
-
-          {/* Input */}
-          <ChatInput
-            input={input}
-            setInput={setInput}
-            images={images}
-            setImages={setImages}
-            isStreaming={isStreaming}
-            hasApiKey={hasApiKey}
-            hasPendingToolCall={isAwaitingApproval}
-            chatMode={chatMode}
-            setChatMode={setChatMode}
-            onSubmit={handleSubmit}
-            onAbort={abort}
-            onInputChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            textareaRef={textareaRef}
-            inputContainerRef={inputContainerRef}
-          />
+          {/* Slash Command Popup */}
+          {showSlashCommand && (
+            <SlashCommandPopup
+              query={slashCommandQuery}
+              onSelect={handleSlashCommand}
+              onClose={() => {
+                setShowSlashCommand(false)
+                setSlashCommandQuery('')
+              }}
+              position={{ x: 16, y: 60 }}
+            />
+          )}
         </div>
-
-        {/* Slash Command Popup */}
-        {showSlashCommand && (
-          <SlashCommandPopup
-            query={slashCommandQuery}
-            onSelect={handleSlashCommand}
-            onClose={() => {
-              setShowSlashCommand(false)
-              setSlashCommandQuery('')
-            }}
-            position={{ x: 16, y: 60 }}
-          />
-        )}
       </div>
-    </div >
+    </div>
   )
 }

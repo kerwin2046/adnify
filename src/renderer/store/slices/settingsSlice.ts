@@ -52,6 +52,7 @@ export interface SettingsSlice {
   providerConfigs: Record<string, ProviderModelConfig>
   securitySettings: SecuritySettings
   agentConfig: AgentConfig
+  editorConfig: import('../../config/editorConfig').EditorConfig
   onboardingCompleted: boolean
   hasExistingConfig: boolean
 
@@ -64,6 +65,7 @@ export interface SettingsSlice {
   removeCustomModel: (providerId: string, model: string) => void
   setSecuritySettings: (settings: Partial<SecuritySettings>) => void
   setAgentConfig: (config: Partial<AgentConfig>) => void
+  setEditorConfig: (config: Partial<import('../../config/editorConfig').EditorConfig>) => void
   setOnboardingCompleted: (completed: boolean) => void
   setHasExistingConfig: (hasConfig: boolean) => void
   loadSettings: (isEmptyWindow?: boolean) => Promise<void>
@@ -120,6 +122,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
   providerConfigs: defaultProviderConfigs,
   securitySettings: defaultSecuritySettings,
   agentConfig: defaultAgentConfig,
+  editorConfig: require('../../config/editorConfig').getEditorConfig(),
   onboardingCompleted: true, // 默认 true，加载后更新
   hasExistingConfig: true,
 
@@ -184,6 +187,13 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
       agentConfig: { ...state.agentConfig, ...config },
     })),
 
+  setEditorConfig: (config) =>
+    set((state) => {
+      const newConfig = { ...state.editorConfig, ...config }
+      require('../../config/editorConfig').saveEditorConfig(newConfig)
+      return { editorConfig: newConfig }
+    }),
+
   setOnboardingCompleted: (completed) => set({ onboardingCompleted: completed }),
   setHasExistingConfig: (hasConfig) => set({ hasExistingConfig: hasConfig }),
 
@@ -197,6 +207,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
           autoApprove: settings.autoApprove || defaultAutoApprove,
           onboardingCompleted: settings.onboardingCompleted ?? true,
           hasExistingConfig: !!settings.llmConfig?.apiKey,
+          editorConfig: require('../../config/editorConfig').getEditorConfig(),
         })
       } else {
         set({ onboardingCompleted: false, hasExistingConfig: false })
