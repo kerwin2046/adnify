@@ -110,24 +110,25 @@ export class TreeSitterChunker {
   private config: IndexConfig
   private parser: Parser | null = null
   private languages: Map<string, Parser.Language> = new Map()
+  private failedLanguages: Set<string> = new Set() // 记录加载失败的语言，避免重复警告
   private initialized = false
   private wasmDir: string
 
   constructor(config?: Partial<IndexConfig>) {
     this.config = { ...DEFAULT_INDEX_CONFIG, ...config }
-    
+
     // Determine WASM directory (needs to work in Dev and Prod)
     // In production (packaged app), resources are in process.resourcesPath (not under node_modules)
     // In development, we use project root's resources folder
     const resourcesPath = (process as any).resourcesPath as string | undefined
     const isPackaged = resourcesPath && !resourcesPath.includes('node_modules')
-    
+
     if (isPackaged && resourcesPath) {
-        this.wasmDir = path.join(resourcesPath, 'tree-sitter')
+      this.wasmDir = path.join(resourcesPath, 'tree-sitter')
     } else {
-        // Development mode: use project root's resources folder
-        // process.cwd() returns project root in Electron dev mode
-        this.wasmDir = path.join(process.cwd(), 'resources', 'tree-sitter')
+      // Development mode: use project root's resources folder
+      // process.cwd() returns project root in Electron dev mode
+      this.wasmDir = path.join(process.cwd(), 'resources', 'tree-sitter')
     }
   }
 
@@ -158,6 +159,11 @@ export class TreeSitterChunker {
       return true
     }
 
+    // 如果之前已经加载失败，静默跳过
+    if (this.failedLanguages.has(langName)) {
+      return false
+    }
+
     try {
       const wasmPath = path.join(this.wasmDir, `tree-sitter-${langName}.wasm`)
       const lang = await Parser.Language.load(wasmPath)
@@ -165,7 +171,9 @@ export class TreeSitterChunker {
       this.parser.setLanguage(lang)
       return true
     } catch (e) {
-      console.warn(`[TreeSitterChunker] Failed to load language ${langName}:`, e)
+      // 只在第一次失败时警告，后续静默处理
+      this.failedLanguages.add(langName)
+      console.warn(`[TreeSitterChunker] Failed to load language ${langName} (will use fallback chunker)`)
       return false
     }
   }
@@ -177,7 +185,7 @@ export class TreeSitterChunker {
     const fileHash = crypto.createHash('sha256').update(content).digest('hex')
     const ext = path.extname(filePath).slice(1).toLowerCase()
     const langName = LANGUAGE_MAP[ext]
-    
+
     if (!langName) return [] // Fallback
 
     const loaded = await this.loadLanguage(langName)
@@ -185,44 +193,44 @@ export class TreeSitterChunker {
 
     const tree = this.parser.parse(content)
     if (!tree) return [] // Parse failed
-    
+
     const queryStr = QUERIES[langName]
-    
+
     if (!queryStr) {
-        // No query for this language, maybe just return whole file or fallback?
-        tree.delete()
-        return []
+      // No query for this language, maybe just return whole file or fallback?
+      tree.delete()
+      return []
     }
 
     const chunks: CodeChunk[] = []
     const relativePath = path.relative(workspacePath, filePath)
-    
+
     try {
       const lang = this.languages.get(langName)!
       const query = lang.query(queryStr)
       const captures = query.captures(tree.rootNode)
-      
+
       // Sort captures by start index to process in order
       captures.sort((a: Parser.QueryCapture, b: Parser.QueryCapture) => a.node.startIndex - b.node.startIndex)
 
       // Filter and merge overlaps?
       // Simple strategy: valid captures become chunks.
       // If a file has no captures (e.g. config file), we might want to fallback.
-      
+
       if (captures.length === 0) {
-          // No semantic blocks found, fallback to line chunking
-          return [] 
+        // No semantic blocks found, fallback to line chunking
+        return []
       }
 
       for (const capture of captures) {
         const { node, name } = capture
-        
+
         // Skip small nodes
         if (node.endPosition.row - node.startPosition.row < 3) continue
 
         // Check node text size
         if (node.text.length > this.config.chunkSize * 100) { // Rough char estimate
-            // Too big? Maybe we should split it further (TODO)
+          // Too big? Maybe we should split it further (TODO)
         }
 
         chunks.push({
@@ -235,10 +243,10 @@ export class TreeSitterChunker {
           endLine: node.endPosition.row + 1,
           type: this.mapCaptureToType(name),
           language: langName,
-          symbols: this.extractName(node) 
+          symbols: this.extractName(node)
         })
       }
-      
+
       // Handle parts of the file that were NOT captured?
       // Usually RAG only cares about meaningful blocks. 
       // Comments outside functions might be lost.
@@ -277,17 +285,17 @@ export class TreeSitterChunker {
     // For 'arrow_function' pattern, we captured @name separately but here we iterate captures.
     // Ideally we process matches not captures to get @name and @body pairs.
     // But captures list flattens it.
-    
+
     // A simple heuristic: look for first child that is an 'identifier' or 'name'
     const findId = (n: Parser.SyntaxNode): string | null => {
-        if (n.type === 'identifier' || n.type === 'type_identifier' || n.type === 'name') return n.text
-        for (let i=0; i<n.childCount; i++) {
-            const child = n.child(i)
-            if (child && (child.type === 'identifier' || child.type === 'name')) return child.text
-             // specific for function_declaration
-            if (child && child.type === 'function_declarator') return findId(child)
-        }
-        return null
+      if (n.type === 'identifier' || n.type === 'type_identifier' || n.type === 'name') return n.text
+      for (let i = 0; i < n.childCount; i++) {
+        const child = n.child(i)
+        if (child && (child.type === 'identifier' || child.type === 'name')) return child.text
+        // specific for function_declaration
+        if (child && child.type === 'function_declarator') return findId(child)
+      }
+      return null
     }
 
     const name = findId(node)

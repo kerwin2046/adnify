@@ -25,7 +25,7 @@ import {
   FileContext,
 } from '@/renderer/agent/core/types'
 
-import { ChatInput, PendingImage } from '@/renderer/components/chat'
+import { ChatInput, PendingImage, ChatContextStats } from '@/renderer/components/chat'
 import MentionPopup from '@/renderer/components/agent/MentionPopup'
 import { MentionParser, MentionCandidate } from '@/renderer/agent/core/MentionParser'
 import ChatMessageUI from './ChatMessage'
@@ -52,6 +52,7 @@ export default function ChatPanel() {
     inputPrompt,
     setInputPrompt,
     selectedCode,
+    contextStats,
   } = useStore()
 
   const toast = useToast()
@@ -698,6 +699,13 @@ export default function ChatPanel() {
           </Button>
         </div>
       </div>
+
+      {/* Context Stats - 上下文统计 */}
+      {contextStats && (
+        <div className="absolute top-[54px] left-0 right-0 z-10">
+          <ChatContextStats stats={contextStats} language={language} />
+        </div>
+      )}
 
       {/* Thread list overlay */}
       {showThreads && (

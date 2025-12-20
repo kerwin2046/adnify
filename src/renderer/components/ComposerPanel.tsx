@@ -217,6 +217,27 @@ export default function ComposerPanel({ onClose, initialChanges }: ComposerPanel
     console.log(`[Composer] Rejected ${result.rejected} changes`)
   }, [])
 
+  // 键盘快捷键: Ctrl+Shift+A 接受全部, Ctrl+Shift+X 拒绝全部
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+        if (e.key === 'A' || e.key === 'a') {
+          e.preventDefault()
+          if (summary.pending > 0) {
+            handleAcceptAllComposer()
+          }
+        } else if (e.key === 'X' || e.key === 'x') {
+          e.preventDefault()
+          if (summary.pending > 0) {
+            handleRejectAllComposer()
+          }
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleAcceptAllComposer, handleRejectAllComposer, summary.pending])
+
   const toggleDirExpanded = useCallback((dir: string) => {
     setExpandedDirs(prev => {
       const next = new Set(prev)

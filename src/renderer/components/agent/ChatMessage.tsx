@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useCallback, useEffect } from 'react'
-import { User, Copy, Check, RefreshCw, Edit2, RotateCcw } from 'lucide-react'
+import { User, Copy, Check, RefreshCw, Edit2, RotateCcw, FileText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -466,6 +466,20 @@ const ChatMessage = React.memo(({
                     {copied ? <Check className="w-3 h-3 text-green-400" /> : <Copy className="w-3 h-3" />}
                     Copy
                   </button>
+                  {!isUser && (
+                    <button
+                      onClick={() => {
+                        // 复制原始 Markdown 内容
+                        navigator.clipboard.writeText(textContent)
+                        // 简单反馈已通过上面的 Copy 按钮处理
+                      }}
+                      className="flex items-center gap-1.5 text-[11px] text-text-muted hover:text-accent transition-colors"
+                      title="Copy as Markdown"
+                    >
+                      <FileText className="w-3 h-3" />
+                      Markdown
+                    </button>
+                  )}
                 </div>
               )}
             </div>

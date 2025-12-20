@@ -19,6 +19,7 @@ import { adnifyDir } from '../services/adnifyDirService'
 import { directoryCacheService } from '../services/directoryCacheService'
 import { keybindingService } from '../services/keybindingService'
 import { Input, Button, Tooltip, ContextMenu, ContextMenuItem } from './ui'
+import CheckpointPanel from './CheckpointPanel'
 
 
 const getFileIcon = (name: string) => {
@@ -1932,6 +1933,11 @@ function OutlineView() {
     )
 }
 
+// 历史记录视图 - 包装 CheckpointPanel
+function HistoryView() {
+    return <CheckpointPanel />
+}
+
 export default function Sidebar() {
     const { activeSidePanel } = useStore()
 
@@ -1944,6 +1950,7 @@ export default function Sidebar() {
             {activeSidePanel === 'git' && <GitView />}
             {activeSidePanel === 'problems' && <ProblemsView />}
             {activeSidePanel === 'outline' && <OutlineView />}
+            {activeSidePanel === 'history' && <HistoryView />}
         </div>
     )
 }

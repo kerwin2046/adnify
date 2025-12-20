@@ -31,7 +31,7 @@ export default function SettingsModal() {
   const {
     llmConfig, setLLMConfig, setShowSettings, language, setLanguage,
     autoApprove, setAutoApprove, providerConfigs, setProviderConfig,
-    promptTemplateId, setPromptTemplateId
+    promptTemplateId, setPromptTemplateId, agentConfig, setAgentConfig
   } = useStore()
   const [activeTab, setActiveTab] = useState<SettingsTab>('provider')
   const [showApiKey, setShowApiKey] = useState(false)
@@ -39,6 +39,7 @@ export default function SettingsModal() {
   const [localLanguage, setLocalLanguage] = useState(language)
   const [localAutoApprove, setLocalAutoApprove] = useState(autoApprove)
   const [localPromptTemplateId, setLocalPromptTemplateId] = useState(promptTemplateId)
+  const [localAgentConfig, setLocalAgentConfig] = useState(agentConfig)
   const [saved, setSaved] = useState(false)
 
 
@@ -95,6 +96,9 @@ export default function SettingsModal() {
     await window.electronAPI.setSetting('promptTemplateId', localPromptTemplateId)
     await window.electronAPI.setSetting('editorSettings', editorSettings)
     await window.electronAPI.setSetting('aiInstructions', aiInstructions)
+    // 保存 Agent 配置
+    setAgentConfig(localAgentConfig)
+    await window.electronAPI.setSetting('agentConfig', localAgentConfig)
     // 保存 providerConfigs (它在 Store 中已经是新的了，因为我们直接修改了 store)
     // 但实际上我们在 ProviderSettings 组件中修改了 store 吗？
     // 是的，我们将把 addModel/removeModel 传递给子组件，它们会直接修改 Store。
@@ -258,6 +262,8 @@ export default function SettingsModal() {
                   setPromptTemplateId={setLocalPromptTemplateId}
                   llmConfig={localConfig}
                   setLLMConfig={setLocalConfig}
+                  agentConfig={localAgentConfig}
+                  setAgentConfig={setLocalAgentConfig}
                   language={localLanguage}
                 />
               )}
@@ -751,11 +757,13 @@ interface AgentSettingsProps {
   setPromptTemplateId: (value: string) => void
   llmConfig: LLMConfig
   setLLMConfig: React.Dispatch<React.SetStateAction<LLMConfig>>
+  agentConfig: import('../store/slices/settingsSlice').AgentConfig
+  setAgentConfig: React.Dispatch<React.SetStateAction<import('../store/slices/settingsSlice').AgentConfig>>
   language: Language
 }
 
 function AgentSettings({
-  autoApprove, setAutoApprove, aiInstructions, setAiInstructions, promptTemplateId, setPromptTemplateId, llmConfig, setLLMConfig, language
+  autoApprove, setAutoApprove, aiInstructions, setAiInstructions, promptTemplateId, setPromptTemplateId, llmConfig, setLLMConfig, agentConfig, setAgentConfig, language
 }: AgentSettingsProps) {
   const templates = getPromptTemplates()
 
@@ -854,6 +862,84 @@ function AgentSettings({
             ? '这些指令将附加到 System Prompt 中，影响所有 AI 回复'
             : 'These instructions will be appended to the System Prompt and affect all AI responses'}
         </p>
+      </section>
+
+      <section className="space-y-4">
+        <h4 className="text-sm font-medium text-text-secondary uppercase tracking-wider text-xs mb-2">
+          {language === 'zh' ? '高级配置' : 'Advanced Configuration'}
+        </h4>
+        <div className="p-5 bg-surface/30 rounded-xl border border-white/5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-text-primary block mb-2">
+                {language === 'zh' ? '最大工具循环' : 'Max Tool Loops'}
+              </label>
+              <Input
+                type="number"
+                value={agentConfig.maxToolLoops}
+                onChange={(e) => setAgentConfig({ ...agentConfig, maxToolLoops: parseInt(e.target.value) || 25 })}
+                min={5}
+                max={100}
+                className="w-full"
+              />
+              <p className="text-xs text-text-muted mt-1">
+                {language === 'zh' ? '单次对话最大工具调用次数 (5-100)' : 'Max tool calls per conversation (5-100)'}
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-text-primary block mb-2">
+                {language === 'zh' ? '最大历史消息' : 'Max History Messages'}
+              </label>
+              <Input
+                type="number"
+                value={agentConfig.maxHistoryMessages}
+                onChange={(e) => setAgentConfig({ ...agentConfig, maxHistoryMessages: parseInt(e.target.value) || 50 })}
+                min={10}
+                max={200}
+                className="w-full"
+              />
+              <p className="text-xs text-text-muted mt-1">
+                {language === 'zh' ? '保留的历史消息数量 (10-200)' : 'Number of messages to retain (10-200)'}
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-text-primary block mb-2">
+                {language === 'zh' ? '工具结果字符限制' : 'Tool Result Char Limit'}
+              </label>
+              <Input
+                type="number"
+                value={agentConfig.maxToolResultChars}
+                onChange={(e) => setAgentConfig({ ...agentConfig, maxToolResultChars: parseInt(e.target.value) || 50000 })}
+                min={10000}
+                max={200000}
+                step={10000}
+                className="w-full"
+              />
+              <p className="text-xs text-text-muted mt-1">
+                {language === 'zh' ? '单个工具结果最大字符数' : 'Max chars per tool result'}
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-text-primary block mb-2">
+                {language === 'zh' ? '上下文字符限制' : 'Context Char Limit'}
+              </label>
+              <Input
+                type="number"
+                value={agentConfig.maxTotalContextChars}
+                onChange={(e) => setAgentConfig({ ...agentConfig, maxTotalContextChars: parseInt(e.target.value) || 100000 })}
+                min={50000}
+                max={500000}
+                step={10000}
+                className="w-full"
+              />
+              <p className="text-xs text-text-muted mt-1">
+                {language === 'zh' ? '总上下文最大字符数' : 'Max total context chars'}
+              </p>
+            </div>
+          </div>
+        </div>
       </section>
     </div>
   )
