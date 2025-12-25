@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 import { ClipboardList } from 'lucide-react'
 import { useStore } from '@store'
 import { useModeStore } from '@/renderer/modes'
-import BottomBarPopover from './ui/BottomBarPopover'
+import BottomBarPopover from '../ui/BottomBarPopover'
 
 interface PlanListContentProps {
     language: 'en' | 'zh'

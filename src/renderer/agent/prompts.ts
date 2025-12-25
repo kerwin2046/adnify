@@ -3,7 +3,7 @@
  * 基于新的提示词模板系统，支持多模板切换和预览
  */
 
-import { ChatMode } from '@store'
+import { WorkMode } from '@/renderer/modes/types'
 import { rulesService } from './rulesService'
 import { useAgentStore } from './core/AgentStore'
 import { FILE_LIMITS } from '@shared/constants'
@@ -29,7 +29,7 @@ export const MAX_CONTEXT_CHARS = FILE_LIMITS.MAX_CONTEXT_CHARS
  * 使用新的提示词模板系统
  */
 export async function buildSystemPrompt(
-	mode: ChatMode,
+	mode: WorkMode,
 	workspacePath: string | null,
 	options?: {
 		openFiles?: string[]

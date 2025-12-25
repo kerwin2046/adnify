@@ -7,7 +7,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { X, Sparkles, Check, Loader2, RefreshCw } from 'lucide-react'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
-import DiffViewer from './DiffViewer'
+import DiffViewer from '../editor/DiffViewer'
 
 interface InlineEditProps {
 	// 编辑器位置信息

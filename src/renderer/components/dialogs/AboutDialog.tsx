@@ -6,9 +6,9 @@
 import { logger } from '@utils/Logger'
 import { useState, useEffect } from 'react'
 import { X, Github, ExternalLink, Code2, Sparkles } from 'lucide-react'
-import { Logo } from './Logo'
+import { Logo } from '../common/Logo'
 import { useStore } from '@store'
-import { Modal } from './ui'
+import { Modal } from '../ui'
 
 
 interface AboutDialogProps {

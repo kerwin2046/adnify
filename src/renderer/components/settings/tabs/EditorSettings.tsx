@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { Layout, Type, Sparkles, Terminal, Check } from 'lucide-react'
 import { useStore } from '@store'
 import { getEditorConfig, saveEditorConfig, EditorConfig } from '@renderer/config/editorConfig'
-import { themes } from '@components/ThemeManager'
+import { themes } from '@components/editor/ThemeManager'
 import { Input, Select, Switch } from '@components/ui'
 import { EditorSettingsProps } from '../types'
 

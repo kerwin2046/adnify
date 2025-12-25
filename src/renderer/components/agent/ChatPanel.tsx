@@ -9,8 +9,8 @@ import {
   Upload,
   X
 } from 'lucide-react'
-import { Logo } from '@/renderer/components/Logo'
-import { useStore } from '@/renderer/store'
+import { Logo } from '@/renderer/components/common/Logo'
+import { useStore, useModeStore } from '@/renderer/store'
 import { useAgent } from '@/renderer/hooks/useAgent'
 import { t } from '@/renderer/i18n'
 import { toFullPath } from '@/renderer/utils/pathUtils'
@@ -33,12 +33,10 @@ import { keybindingService } from '@/renderer/services/keybindingService'
 import { slashCommandService } from '@/renderer/services/slashCommandService'
 import { AgentService } from '@/renderer/agent/core/AgentService'
 import { Button } from '../ui'
-import { useToast } from '@/renderer/components/ToastProvider'
+import { useToast } from '@/renderer/components/common/ToastProvider'
 
 export default function ChatPanel() {
   const {
-    chatMode,
-    setChatMode,
     llmConfig,
     workspacePath,
     openFile,
@@ -51,6 +49,8 @@ export default function ChatPanel() {
     selectedCode,
     contextStats,
   } = useStore()
+
+  const { currentMode: chatMode, setMode: setChatMode } = useModeStore()
 
   const toast = useToast()
 
@@ -446,7 +446,7 @@ export default function ChatPanel() {
       return
     }
 
-    const { globalConfirm } = await import('../ConfirmDialog')
+    const { globalConfirm } = await import('../common/ConfirmDialog')
     const confirmed = await globalConfirm({
       title: language === 'zh' ? '恢复检查点' : 'Restore Checkpoint',
       message: t('confirmRestoreCheckpoint', language),

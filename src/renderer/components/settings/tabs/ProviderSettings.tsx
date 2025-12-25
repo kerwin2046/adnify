@@ -7,8 +7,8 @@ import { Plus, Trash, Eye, EyeOff, Check, AlertTriangle, Sliders } from 'lucide-
 import { useStore } from '@store'
 import { PROVIDERS, getAdapterConfig } from '@/shared/config/providers'
 import { LLM_DEFAULTS } from '@/shared/constants'
-import { toast } from '@components/ToastProvider'
-import LLMAdapterConfigEditor from '@components/LLMAdapterConfigEditor'
+import { toast } from '@components/common/ToastProvider'
+import LLMAdapterConfigEditor from '@components/dialogs/LLMAdapterConfigEditor'
 import { Button, Input, Select } from '@components/ui'
 import { ProviderSettingsProps } from '../types'
 

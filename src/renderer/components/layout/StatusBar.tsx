@@ -5,9 +5,9 @@ import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 import { IndexStatus } from '@app-types/electron'
 import { indexWorkerService, IndexProgress } from '@services/indexWorkerService'
-import BottomBarPopover from './ui/BottomBarPopover'
-import ToolCallLogContent from './ToolCallLogContent'
-import { PlanListPopover } from './PlanListContent'
+import BottomBarPopover from '../ui/BottomBarPopover'
+import ToolCallLogContent from '../panels/ToolCallLogContent'
+import { PlanListPopover } from '../panels/PlanListContent'
 
 export default function StatusBar() {
   const {

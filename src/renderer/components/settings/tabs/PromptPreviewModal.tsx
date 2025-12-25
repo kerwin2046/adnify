@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Search, Copy, Check, ChevronRight } from 'lucide-react'
 import { getPromptTemplateById, getPromptTemplatePreview } from '@renderer/agent/promptTemplates'
-import { toast } from '@components/ToastProvider'
+import { toast } from '@components/common/ToastProvider'
 import { Button, Modal } from '@components/ui'
 import { PromptPreviewModalProps } from '../types'
 

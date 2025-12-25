@@ -9,7 +9,7 @@ import { useStore } from '@store'
 import { getFileName } from '@utils/pathUtils'
 import { keybindingService } from '@services/keybindingService'
 import { t } from '@renderer/i18n'
-import { Button } from './ui'
+import { Button } from '../ui'
 
 interface QuickOpenProps {
   onClose: () => void

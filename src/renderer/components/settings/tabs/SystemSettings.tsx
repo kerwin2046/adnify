@@ -5,7 +5,7 @@
 import { logger } from '@utils/Logger'
 import { useState, useEffect } from 'react'
 import { HardDrive, AlertTriangle, Monitor } from 'lucide-react'
-import { toast } from '@components/ToastProvider'
+import { toast } from '@components/common/ToastProvider'
 import { Button } from '@components/ui'
 import { Language } from '@renderer/i18n'
 

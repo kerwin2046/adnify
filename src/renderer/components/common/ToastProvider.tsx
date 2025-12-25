@@ -4,7 +4,7 @@
  */
 
 import { useState, useCallback, createContext, useContext, ReactNode } from 'react'
-import { Toast, ToastType } from './ui/Toast'
+import { Toast, ToastType } from '../ui/Toast'
 
 export interface ToastMessage {
   id: string

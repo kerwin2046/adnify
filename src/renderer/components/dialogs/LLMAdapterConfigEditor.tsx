@@ -9,7 +9,7 @@ import {
     ChevronDown, ChevronRight, AlertTriangle, HelpCircle,
     FileJson, Zap
 } from 'lucide-react'
-import { Switch, Input } from './ui'
+import { Switch, Input } from '../ui'
 import {
     type LLMAdapterConfig,
     getBuiltinAdapter,

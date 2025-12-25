@@ -52,8 +52,8 @@ export type {
 // Provider 类型
 export type ProviderType = 'openai' | 'anthropic' | 'gemini' | 'custom'
 
-// 聊天模式
-export type ChatMode = 'chat' | 'agent' | 'plan'
+// 工作模式 - 统一从 modes 导出
+export type { WorkMode } from '@/renderer/modes/types'
 
 // 打开的文件
 export interface OpenFile {

@@ -5,7 +5,7 @@
 
 import { useState } from 'react'
 import { Trash2, Download, Copy, Check, ChevronDown, ChevronRight } from 'lucide-react'
-import { Button } from './ui'
+import { Button } from '../ui'
 import { JsonHighlight } from '@/renderer/utils/jsonHighlight'
 import { useStore } from '@/renderer/store'
 

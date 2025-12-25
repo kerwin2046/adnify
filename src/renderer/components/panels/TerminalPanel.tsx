@@ -4,10 +4,10 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { X, Plus, Trash2, ChevronUp, ChevronDown, Terminal as TerminalIcon, Sparkles, Play, SplitSquareHorizontal, LayoutTemplate } from 'lucide-react'
-import { useStore } from '@store'
+import { useStore, useModeStore } from '@store'
 import { getEditorConfig } from '@renderer/config/editorConfig'
-import { themes } from './ThemeManager'
-import { Button, Select } from './ui'
+import { themes } from '../editor/ThemeManager'
+import { Button, Select } from '../ui'
 
 const XTERM_STYLE = `
 .xterm { font-feature-settings: "liga" 0; position: relative; user-select: none; -ms-user-select: none; -webkit-user-select: none; padding: 4px; }
@@ -42,7 +42,8 @@ interface TerminalSession {
 }
 
 export default function TerminalPanel() {
-    const { terminalVisible, setTerminalVisible, workspace, setChatMode, setInputPrompt, currentTheme, terminalLayout, setTerminalLayout } = useStore()
+    const { terminalVisible, setTerminalVisible, workspace, setInputPrompt, currentTheme, terminalLayout, setTerminalLayout } = useStore()
+    const { setMode } = useModeStore()
     const [isCollapsed, setIsCollapsed] = useState(false)
     const [height, setHeight] = useState(280)
     const [isResizing, setIsResizing] = useState(false)
@@ -360,7 +361,7 @@ export default function TerminalPanel() {
         const selectedText = term.getSelection()?.trim()
         const content = selectedText || (outputBuffers.current.get(activeId) || []).join('').replace(/\u001b\[[0-9;]*m/g, '').slice(-2000).trim()
         if (!content) return
-        setChatMode('chat')
+        setMode('chat')
         setInputPrompt(`I'm getting this error in the terminal. Please analyze it and fix the code:\n\n\`\`\`\n${content}\n\`\`\``)
     }
 

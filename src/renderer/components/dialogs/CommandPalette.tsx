@@ -9,12 +9,12 @@ import {
   MessageSquare, History, Trash2, RefreshCw, Save,
   X, Zap, Keyboard, Sparkles, ArrowRight, Plus, FolderPlus
 } from 'lucide-react'
-import { useStore } from '@/renderer/store'
+import { useStore, useModeStore } from '@/renderer/store'
 import { useAgent } from '@/renderer/hooks/useAgent'
 import { t } from '@/renderer/i18n'
 import { keybindingService } from '@/renderer/services/keybindingService'
 import { adnifyDir } from '@/renderer/services/adnifyDirService'
-import { toast } from '@/renderer/components/ToastProvider'
+import { toast } from '@/renderer/components/common/ToastProvider'
 
 interface Command {
   id: string
@@ -89,7 +89,6 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
     setShowSettings,
     setTerminalVisible,
     terminalVisible,
-    setChatMode,
     clearCheckpoints,
     workspacePath,
     activeFilePath,
@@ -99,6 +98,8 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
     setShowComposer,
     setShowAbout,
   } = useStore()
+
+  const { setMode } = useModeStore()
 
   const { clearMessages } = useAgent()
 
@@ -117,7 +118,7 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
       icon: Sparkles,
       category: 'AI',
       action: () => {
-        setChatMode('chat')
+        setMode('chat')
         if (query) setInputPrompt(query)
       }
     },
@@ -129,7 +130,7 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
       category: 'AI Helper',
       action: () => {
         if (activeFilePath) {
-          setChatMode('chat')
+          setMode('chat')
           setInputPrompt(`Explain the file ${activeFilePath} in detail.`)
         }
       }
@@ -142,7 +143,7 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
       category: 'AI Helper',
       action: () => {
         if (activeFilePath) {
-          setChatMode('chat')
+          setMode('chat')
           setInputPrompt(`Analyze ${activeFilePath} and suggest refactoring improvements for readability and performance.`)
         }
       }
@@ -155,7 +156,7 @@ export default function CommandPalette({ onClose, onShowKeyboardShortcuts }: Com
       category: 'AI Helper',
       action: () => {
         if (activeFilePath) {
-          setChatMode('chat')
+          setMode('chat')
           setInputPrompt(`Find potential bugs in ${activeFilePath} and provide fixes.`)
         }
       }

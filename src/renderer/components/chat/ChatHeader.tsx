@@ -2,12 +2,13 @@
  * 聊天面板头部组件
  */
 import { History, Trash2 } from 'lucide-react'
-import { useStore, ChatMode } from '@store'
+import { useStore } from '@store'
+import { WorkMode } from '@/renderer/modes/types'
 import { t } from '@renderer/i18n'
 
 interface ChatHeaderProps {
-  chatMode: ChatMode
-  setChatMode: (mode: ChatMode) => void
+  chatMode: WorkMode
+  setChatMode: (mode: WorkMode) => void
   showSessions: boolean
   setShowSessions: (show: boolean) => void
   onClearMessages: () => void

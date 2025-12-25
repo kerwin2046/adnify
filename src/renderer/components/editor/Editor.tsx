@@ -7,7 +7,7 @@ import { useStore } from '@store'
 import { useAgent } from '@hooks/useAgent'
 import { t } from '@renderer/i18n'
 import { getFileName, getPathSeparator } from '@utils/pathUtils'
-import { toast } from './ToastProvider'
+import { toast } from '../common/ToastProvider'
 import DiffViewer from './DiffViewer'
 import InlineEdit from './InlineEdit'
 import EditorContextMenu from './EditorContextMenu'
@@ -16,7 +16,7 @@ import { streamingEditService } from '@renderer/agent/streamingEditService'
 import { LintError, StreamingEditState } from '@/renderer/agent/toolTypes'
 import { completionService } from '@services/completionService'
 import { getFileType, MarkdownPreview, ImagePreview, UnsupportedFile, isPlanFile } from './FilePreview'
-import { PlanPreview } from './agent/PlanPreview'
+import { PlanPreview } from '../agent/PlanPreview'
 
 import { initMonacoTypeService } from '@services/monacoTypeService'
 import {
@@ -33,7 +33,7 @@ import { pathLinkService } from '@services/pathLinkService'
 import { getEditorConfig } from '@renderer/config/editorConfig'
 import { keybindingService } from '@services/keybindingService'
 // 导入 Monaco worker 配置
-import { monaco } from '../monacoWorker'
+import { monaco } from '@renderer/monacoWorker'
 // 导入编辑器配置
 import type { ThemeName } from '@store/slices/themeSlice'
 
@@ -178,7 +178,7 @@ export default function Editor() {
   useEffect(() => {
     if (monacoRef.current && currentTheme) {
       const monaco = monacoRef.current
-      import('./ThemeManager').then(({ themes }) => {
+      import('../editor/ThemeManager').then(({ themes }) => {
         const themeVars = themes[currentTheme] || themes['adnify-dark']
         if (!themeVars) return
 
@@ -265,7 +265,7 @@ export default function Editor() {
 
     // 初始设置主题 - 直接在挂载时应用
     const { currentTheme: initialTheme } = useStore.getState() as { currentTheme: ThemeName }
-    import('./ThemeManager').then(({ themes }) => {
+    import('../editor/ThemeManager').then(({ themes }) => {
       const themeVars = themes[initialTheme]
       if (!themeVars) return
 
@@ -774,7 +774,7 @@ export default function Editor() {
     const file = openFiles.find((f: { path: string; isDirty?: boolean }) => f.path === filePath)
     if (file?.isDirty) {
       const fileName = getFileName(filePath)
-      const { globalConfirm } = await import('./ConfirmDialog')
+      const { globalConfirm } = await import('../common/ConfirmDialog')
       const result = await globalConfirm({
         title: language === 'zh' ? '未保存的更改' : 'Unsaved Changes',
         message: t('confirmUnsavedChanges', language, { name: fileName }),

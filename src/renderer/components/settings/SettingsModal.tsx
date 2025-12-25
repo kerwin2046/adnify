@@ -8,7 +8,7 @@ import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor } from 'lucid
 import { useStore } from '@store'
 import { PROVIDERS } from '@/shared/config/providers'
 import { getEditorConfig, saveEditorConfig } from '@renderer/config/editorConfig'
-import KeybindingPanel from '@components/KeybindingPanel'
+import KeybindingPanel from '@components/panels/KeybindingPanel'
 import { Button, Modal, Select } from '@components/ui'
 import { SettingsTab, EditorSettingsState, LANGUAGES } from './types'
 import {

@@ -8,7 +8,7 @@ import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { Eye, Edit, FileQuestion, Image as ImageIcon, AlertTriangle, Columns } from 'lucide-react'
-import { Button } from './ui'
+import { Button } from '../ui'
 
 // 文件类型分类
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico']

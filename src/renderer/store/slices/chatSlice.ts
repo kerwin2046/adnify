@@ -6,7 +6,6 @@
  * - 消息持久化支持
  * - 上下文窗口管理
  */
-import { logger } from '@utils/Logger'
 import { StateCreator } from 'zustand'
 import { ToolStatus, ToolApprovalType, Checkpoint } from '@renderer/agent/toolTypes'
 
@@ -24,8 +23,6 @@ const CHAT_CONFIG = {
   /** 持久化存储 key */
   storageKey: 'adnify_chat_history',
 } as const
-
-export type ChatMode = 'chat' | 'agent' | 'plan'
 
 export interface Message {
   id: string
@@ -67,7 +64,7 @@ export interface ContextStats {
 }
 
 export interface ChatSlice {
-  chatMode: ChatMode
+  // 注意：chatMode 已移至 modeStore，此处不再维护
   messages: Message[]
   isStreaming: boolean
   currentToolCalls: ToolCall[]
@@ -78,7 +75,6 @@ export interface ChatSlice {
   inputPrompt: string
   contextStats: ContextStats | null
 
-  setChatMode: (mode: ChatMode) => void
   addMessage: (message: Omit<Message, 'id' | 'timestamp'>) => void
   updateLastMessage: (content: string) => void
   appendTokenToLastMessage: (token: string) => void
@@ -104,7 +100,6 @@ export interface ChatSlice {
 }
 
 export const createChatSlice: StateCreator<ChatSlice, [], [], ChatSlice> = (set) => ({
-  chatMode: 'chat',
   messages: [],
   isStreaming: false,
   currentToolCalls: [],
@@ -114,17 +109,6 @@ export const createChatSlice: StateCreator<ChatSlice, [], [], ChatSlice> = (set)
   currentSessionId: null,
   inputPrompt: '',
   contextStats: null,
-
-  setChatMode: (mode) => {
-    set({ chatMode: mode })
-    // 同步更新全局模式状态
-    try {
-      const { useModeStore } = require('../../modes/modeStore')
-      useModeStore.getState().setMode(mode)
-    } catch (e) {
-      logger.store.warn('[ChatSlice] Failed to sync modeStore:', e)
-    }
-  },
 
   addMessage: (message) =>
     set((state) => {

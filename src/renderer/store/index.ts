@@ -12,12 +12,16 @@ import { LogSlice, createLogSlice } from './slices/logSlice'
 
 // 导出类型
 export type { OpenFile } from './slices/fileSlice'
-export type { ChatMode, Message, ToolCall, ContextStats } from './slices/chatSlice'
+export type { Message, ToolCall, ContextStats } from './slices/chatSlice'
 export type { ProviderType, LLMConfig, LLMParameters, AutoApproveSettings, SecuritySettings } from './slices/settingsSlice'
 export type { ProviderModelConfig } from '@app-types/provider'
 export type { SidePanel, DiffView } from './slices/uiSlice'
 export type { ThemeName } from './slices/themeSlice'
 export type { ToolCallLogEntry } from './slices/logSlice'
+
+// 模式管理统一从 modeStore 导出
+export { useModeStore } from '@/renderer/modes/modeStore'
+export type { WorkMode } from '@/renderer/modes/types'
 
 // 组合所有 slices
 type StoreState = FileSlice & ChatSlice & SettingsSlice & UISlice & ThemeSlice & LogSlice

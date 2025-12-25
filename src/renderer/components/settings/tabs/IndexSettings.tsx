@@ -6,7 +6,7 @@ import { logger } from '@utils/Logger'
 import { useState, useEffect } from 'react'
 import { Eye, EyeOff, AlertTriangle, Database } from 'lucide-react'
 import { useStore } from '@store'
-import { toast } from '@components/ToastProvider'
+import { toast } from '@components/common/ToastProvider'
 import { Button, Input, Select } from '@components/ui'
 import { Language } from '@renderer/i18n'
 

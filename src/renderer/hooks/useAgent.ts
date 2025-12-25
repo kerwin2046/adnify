@@ -4,7 +4,7 @@
  */
 
 import { useCallback, useMemo, useEffect, useState } from 'react'
-import { useStore } from '@/renderer/store'
+import { useStore, useModeStore } from '@/renderer/store'
 import {
   useAgentStore,
   selectMessages,
@@ -21,7 +21,9 @@ import { buildSystemPrompt } from '@/renderer/agent/prompts'
 
 export function useAgent() {
   // 从主 store 获取配置
-  const { llmConfig, workspacePath, chatMode, promptTemplateId, openFiles, activeFilePath } = useStore()
+  const { llmConfig, workspacePath, promptTemplateId, openFiles, activeFilePath } = useStore()
+  // 从 modeStore 获取当前模式
+  const chatMode = useModeStore(state => state.currentMode)
 
   // 本地状态：aiInstructions（从 electron settings 获取）
   const [aiInstructions, setAiInstructions] = useState<string>('')

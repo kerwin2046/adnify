@@ -16,7 +16,8 @@ import {
   ClipboardList,
   Plus
 } from 'lucide-react'
-import { useStore, ChatMode } from '@store'
+import { useStore } from '@store'
+import { WorkMode } from '@/renderer/modes/types'
 import { t } from '@renderer/i18n'
 import { Button } from '../ui'
 
@@ -37,8 +38,8 @@ interface ChatInputProps {
   isStreaming: boolean
   hasApiKey: boolean
   hasPendingToolCall: boolean
-  chatMode: ChatMode
-  setChatMode: (mode: ChatMode) => void
+  chatMode: WorkMode
+  setChatMode: (mode: WorkMode) => void
   onSubmit: () => void
   onAbort: () => void
   onInputChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void

@@ -12,7 +12,8 @@
 
 import { logger } from '@utils/Logger'
 import { useAgentStore } from './AgentStore'
-import { useStore, ChatMode } from '@store'
+import { useStore } from '@store'
+import { WorkMode } from '@/renderer/modes/types'
 import { executeTool, getToolDefinitions, getToolApprovalType } from './ToolExecutor'
 import { buildOpenAIMessages, validateOpenAIMessages, OpenAIMessage } from './MessageConverter'
 import {
@@ -105,7 +106,7 @@ class AgentServiceClass {
     config: LLMCallConfig,
     workspacePath: string | null,
     systemPrompt: string,
-    chatMode: ChatMode = 'agent'
+    chatMode: WorkMode = 'agent'
   ): Promise<void> {
     if (this.isRunning) {
       logger.agent.warn('[Agent] Already running, ignoring new request')
@@ -260,7 +261,7 @@ class AgentServiceClass {
     config: LLMCallConfig,
     llmMessages: OpenAIMessage[],
     workspacePath: string | null,
-    chatMode: ChatMode
+    chatMode: WorkMode
   ): Promise<void> {
     const store = useAgentStore.getState()
     let loopCount = 0
@@ -470,7 +471,7 @@ class AgentServiceClass {
   private async callLLMWithRetry(
     config: LLMCallConfig,
     messages: OpenAIMessage[],
-    chatMode: ChatMode
+    chatMode: WorkMode
   ): Promise<{ content?: string; toolCalls?: LLMToolCall[]; error?: string }> {
     let lastError: string | undefined
     const retryConfig = getAgentConfig()
@@ -502,7 +503,7 @@ class AgentServiceClass {
   private async callLLM(
     config: LLMCallConfig,
     messages: OpenAIMessage[],
-    chatMode: ChatMode
+    chatMode: WorkMode
   ): Promise<{ content?: string; toolCalls?: LLMToolCall[]; error?: string }> {
     return new Promise((resolve) => {
       // 重置流式状态

@@ -7,8 +7,8 @@ import { useState, useCallback, createContext, useContext, ReactNode, useEffect 
 import { AlertTriangle } from 'lucide-react'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
-import { Modal } from './ui/Modal'
-import { Button } from './ui/Button'
+import { Modal } from '../ui/Modal'
+import { Button } from '../ui/Button'
 
 interface ConfirmDialogProps {
   isOpen: boolean

@@ -14,9 +14,9 @@ import { Language } from '@renderer/i18n'
 import { themeManager, Theme } from '@renderer/config/themeConfig'
 import { PROVIDERS } from '@/shared/config/providers'
 import { LLM_DEFAULTS } from '@/shared/constants'
-import { Logo } from './Logo'
+import { Logo } from '../common/Logo'
 import { adnifyDir } from '@services/adnifyDirService'
-import { Button, Input, Select, Switch } from './ui'
+import { Button, Input, Select, Switch } from '../ui'
 
 interface OnboardingWizardProps {
   onComplete: () => void
@@ -97,7 +97,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
 
   const handleComplete = async () => {
     // 使用统一的 settingsService 保存
-    const { settingsService, defaultAgentConfig, defaultEditorSettings } = await import('../services/settingsService')
+    const { settingsService, defaultAgentConfig, defaultEditorSettings } = await import('@services/settingsService')
 
     // 更新 Store 状态
     setLanguage(selectedLanguage)

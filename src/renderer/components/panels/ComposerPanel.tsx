@@ -17,7 +17,7 @@ import {
   Loader2, FolderOpen, CheckCheck, XCircle
 } from 'lucide-react'
 import { useStore } from '@store'
-import DiffViewer from './DiffViewer'
+import DiffViewer from '../editor/DiffViewer'
 import { t } from '@renderer/i18n'
 import { composerService, FileChange } from '@renderer/agent/composerService'
 import { getEditorConfig } from '@renderer/config/editorConfig'

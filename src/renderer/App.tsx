@@ -1,25 +1,25 @@
 import { logger } from '@utils/Logger'
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
 import { useStore } from './store'
-import TitleBar from './components/TitleBar'
+import TitleBar from './components/layout/TitleBar'
 import { Sidebar } from '@components/sidebar'
-import Editor from './components/Editor'
+import Editor from './components/editor/Editor'
 import { ChatPanel } from './components/agent'
 import SettingsModal from './components/settings/SettingsModal'
-import TerminalPanel from './components/TerminalPanel'
-import CommandPalette from './components/CommandPalette'
-import KeyboardShortcuts from './components/KeyboardShortcuts'
-import QuickOpen from './components/QuickOpen'
-import ActivityBar from './components/ActivityBar'
-import StatusBar from './components/StatusBar'
-import { ToastProvider, useToast, setGlobalToast } from './components/ToastProvider'
-import { GlobalConfirmDialog } from './components/ConfirmDialog'
-import { ErrorBoundary } from './components/ErrorBoundary'
+import TerminalPanel from './components/panels/TerminalPanel'
+import CommandPalette from './components/dialogs/CommandPalette'
+import KeyboardShortcuts from './components/dialogs/KeyboardShortcuts'
+import QuickOpen from './components/dialogs/QuickOpen'
+import ActivityBar from './components/layout/ActivityBar'
+import StatusBar from './components/layout/StatusBar'
+import { ToastProvider, useToast, setGlobalToast } from './components/common/ToastProvider'
+import { GlobalConfirmDialog } from './components/common/ConfirmDialog'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { initEditorConfig } from './config/editorConfig'
 import { themeManager } from './config/themeConfig'
 import { restoreWorkspaceState, initWorkspaceStateSync } from './services/workspaceStateService'
-import { ThemeManager } from './components/ThemeManager'
-import AboutDialog from './components/AboutDialog'
+import { ThemeManager } from './components/editor/ThemeManager'
+import AboutDialog from './components/dialogs/AboutDialog'
 import { adnifyDir } from './services/adnifyDirService'
 import { checkpointService } from './agent/checkpointService'
 import { useAgentStore, initializeAgentStore } from './agent/core/AgentStore'
@@ -28,8 +28,8 @@ import { registerCoreCommands } from './config/commands'
 import { LAYOUT_LIMITS } from '@shared/constants'
 
 // 懒加载大组件以优化首屏性能
-const ComposerPanel = lazy(() => import('./components/ComposerPanel'))
-const OnboardingWizard = lazy(() => import('./components/OnboardingWizard'))
+const ComposerPanel = lazy(() => import('./components/panels/ComposerPanel'))
+const OnboardingWizard = lazy(() => import('./components/dialogs/OnboardingWizard'))
 
   // 暴露 store 给插件系统
   ; (window as any).__ADNIFY_STORE__ = { getState: () => useStore.getState() }
