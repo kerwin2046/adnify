@@ -29,7 +29,7 @@ import { MentionParser, MentionCandidate } from '@/renderer/agent/core/MentionPa
 import ChatMessageUI from './ChatMessage'
 import AgentStatusBar from './AgentStatusBar'
 import { keybindingService } from '@/renderer/services/keybindingService'
-import { slashCommandService } from '@/renderer/services/slashCommandService'
+import { slashCommandService, SlashCommand } from '@/renderer/services/slashCommandService'
 import { AgentService } from '@/renderer/agent/core/AgentService'
 import { Button } from '../ui'
 import { useToast } from '@/renderer/components/ToastProvider'
@@ -82,7 +82,7 @@ export default function ChatPanel() {
     getCheckpointForMessage,
     addContextItem,
     removeContextItem,
-
+    clearContextItems,
     checkContextLength,
   } = useAgent()
 
@@ -96,7 +96,8 @@ export default function ChatPanel() {
   const [mentionLoading, setMentionLoading] = useState(false)
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null)
   const [isDragging, setIsDragging] = useState(false)
-
+  const [showSlashCommand, setShowSlashCommand] = useState(false)
+  const [slashCommandQuery, setSlashCommandQuery] = useState('')
   const [showContextWarning, setShowContextWarning] = useState(false)
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -243,7 +244,7 @@ export default function ChatPanel() {
         setMentionPosition({ x: rect.left + 16, y: rect.top })
       }
       setShowFileMention(true)
-
+      setShowSlashCommand(false)
 
       // Fetch suggestions
       setMentionLoading(true)
@@ -255,9 +256,16 @@ export default function ChatPanel() {
       } finally {
         setMentionLoading(false)
       }
-    } else {
+    } else if (value.startsWith('/')) {
+      setSlashCommandQuery(value)
+      setShowSlashCommand(true)
       setShowFileMention(false)
       setMentionQuery('')
+    } else {
+      setShowFileMention(false)
+      setShowSlashCommand(false)
+      setMentionQuery('')
+      setSlashCommandQuery('')
     }
   }, [workspacePath])
 
@@ -407,7 +415,23 @@ export default function ChatPanel() {
     addContextItem({ type: 'File', uri: activeFilePath })
   }, [activeFilePath, contextItems, addContextItem])
 
-
+  // 处理斜杠命令选择
+  const handleSlashCommand = useCallback((cmd: SlashCommand) => {
+    const result = slashCommandService.parse('/' + cmd.name, {
+      activeFilePath: activeFilePath || undefined,
+      selectedCode: selectedCode || undefined,
+      workspacePath: workspacePath || undefined,
+    })
+    if (result) {
+      setInput(result.prompt)
+      if (result.mode) {
+        setChatMode(result.mode)
+      }
+    }
+    setShowSlashCommand(false)
+    setSlashCommandQuery('')
+    textareaRef.current?.focus()
+  }, [activeFilePath, selectedCode, workspacePath, setChatMode])
 
   // 键盘处理
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

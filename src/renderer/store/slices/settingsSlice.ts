@@ -5,7 +5,6 @@
  * 注意：类型定义和默认值从 settingsService 导入
  */
 import { StateCreator } from 'zustand'
-import { logger } from '@/renderer/utils/Logger'
 import { SECURITY_DEFAULTS, AGENT_DEFAULTS } from '@/shared/constants'
 import { saveEditorConfig, getEditorConfig, defaultEditorConfig } from '../../config/editorConfig'
 import { ProviderModelConfig } from '../../types/provider'
@@ -228,7 +227,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
         }
       }
 
-      logger.store.info('loadSettings via settingsService', {
+      console.log('[SettingsSlice] loadSettings via settingsService:', {
         hasAdapterConfig: !!llmConfig.adapterConfig,
         adapterId: llmConfig.adapterId,
         provider: llmConfig.provider,
@@ -265,7 +264,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
         }
       }
     } catch (e) {
-      logger.store.error('Failed to load settings', { error: e })
+      console.error('[SettingsSlice] Failed to load settings:', e)
     }
   },
 })

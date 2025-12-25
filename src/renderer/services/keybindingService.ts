@@ -1,6 +1,4 @@
 
-import { logger } from '@/renderer/utils/Logger'
-
 export interface Command {
     id: string
     title: string
@@ -23,7 +21,7 @@ class KeybindingService {
         if (this.initialized) return
         await this.loadOverrides()
         this.initialized = true
-        logger.system.info('KeybindingService initialized', { commandCount: this.commands.size })
+        console.log('[KeybindingService] Initialized with', this.commands.size, 'commands')
     }
 
     registerCommand(command: Command) {
@@ -49,7 +47,7 @@ class KeybindingService {
     handleKeyDown(e: KeyboardEvent | React.KeyboardEvent): boolean {
         for (const [id, command] of this.commands) {
             if (this.matches(e as KeyboardEvent, id)) {
-                logger.system.debug('Executing command', { id })
+                console.log(`[KeybindingService] Executing command: ${id}`)
                 if (command.handler) {
                     command.handler()
                     return true
@@ -86,7 +84,7 @@ class KeybindingService {
         }
 
         if (modifiersMatch && keyMatch) {
-            logger.system.debug('Match found for command', { commandId, binding })
+            console.log(`[KeybindingService] Match found for ${commandId} (${binding})`)
         }
 
         return modifiersMatch && keyMatch
@@ -113,7 +111,7 @@ class KeybindingService {
                 this.overrides = new Map(Object.entries(saved))
             }
         } catch (e) {
-            logger.system.error('Failed to load keybindings', { error: e })
+            console.error('Failed to load keybindings:', e)
         }
     }
 
@@ -122,7 +120,7 @@ class KeybindingService {
             const obj = Object.fromEntries(this.overrides)
             await window.electronAPI.setSetting('keybindings', obj)
         } catch (e) {
-            logger.system.error('Failed to save keybindings', { error: e })
+            console.error('Failed to save keybindings:', e)
         }
     }
 }

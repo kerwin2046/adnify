@@ -72,17 +72,7 @@ export abstract class BaseProvider implements LLMProvider {
             false
           )
         case 400:
-          console.error('[BaseProvider] 400 Error details:', message)
-          // 更精确的上下文长度错误匹配
-          const lowerMsg = message.toLowerCase()
-          const isContextLengthError = (
-            lowerMsg.includes('context_length_exceeded') ||
-            lowerMsg.includes('maximum context length') ||
-            lowerMsg.includes('max_tokens') ||
-            (lowerMsg.includes('token') && lowerMsg.includes('limit')) ||
-            (lowerMsg.includes('context') && lowerMsg.includes('exceed'))
-          )
-          if (isContextLengthError) {
+          if (message.includes('context') || message.includes('token')) {
             return new LLMError(
               'Context length exceeded. Try reducing the conversation history.',
               LLMErrorCode.CONTEXT_LENGTH_EXCEEDED,

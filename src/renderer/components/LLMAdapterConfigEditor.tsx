@@ -5,14 +5,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-    Code2, RotateCcw,
+    Code2, Sparkles, RotateCcw,
     ChevronDown, ChevronRight, AlertTriangle, HelpCircle,
     FileJson, Zap
 } from 'lucide-react'
-import { Input, Select } from './ui'
+import { Switch, Input } from './ui'
 import {
     type LLMAdapterConfig,
-    type ToolParseConfig,
     getBuiltinAdapter,
     getBuiltinAdapters,
     getAdapterConfig,
@@ -45,7 +44,6 @@ export default function LLMAdapterConfigEditor({
     const [showRequestDetails, setShowRequestDetails] = useState(false)
     const [showResponseDetails, setShowResponseDetails] = useState(false)
     const [bodyJsonText, setBodyJsonText] = useState('')
-
     const [jsonError, setJsonError] = useState<string | null>(null)
 
     // 当 adapterId 或外部 config 变化时同步状态
@@ -79,21 +77,6 @@ export default function LLMAdapterConfigEditor({
         onChange(newConfig.id, newConfig)
     }, [localConfig, onChange, defaultAdapter])
 
-    // 更新工具解析配置
-    const updateToolParse = useCallback((updates: Partial<ToolParseConfig>) => {
-        // 确保有默认值
-        const currentToolParse = localConfig.toolParse || { responseFormat: 'json' }
-        const newConfig: LLMAdapterConfig = {
-            ...localConfig,
-            toolParse: {
-                ...currentToolParse,
-                ...updates
-            } as ToolParseConfig
-        }
-        setLocalConfig(newConfig)
-        onChange(adapterId, newConfig)
-    }, [localConfig, adapterId, onChange])
-
     // 更新响应配置
     const updateResponse = useCallback((updates: Partial<LLMAdapterConfig['response']>) => {
         const currentResponse = localConfig.response || defaultAdapter.response
@@ -118,21 +101,14 @@ export default function LLMAdapterConfigEditor({
         }
     }, [updateRequest])
 
-
-
-    // 重置请求体为预设
-    const handleResetRequest = useCallback(() => {
+    // 重置为预设
+    const handleReset = useCallback(() => {
         const preset = getBuiltinAdapter(adapterId) || defaultAdapter
+        setLocalConfig(preset)
         setBodyJsonText(JSON.stringify(preset.request.bodyTemplate, null, 2))
         setJsonError(null)
-        updateRequest(preset.request)
-    }, [adapterId, defaultAdapter, updateRequest])
-
-    // 重置响应配置为预设
-    const handleResetResponse = useCallback(() => {
-        const preset = getBuiltinAdapter(adapterId) || defaultAdapter
-        updateResponse(preset.response)
-    }, [adapterId, defaultAdapter, updateResponse])
+        onChange(preset.id, preset)
+    }, [adapterId, onChange, defaultAdapter])
 
     // 选择预设
     const handlePresetSelect = useCallback((presetId: string) => {
@@ -238,7 +214,7 @@ export default function LLMAdapterConfigEditor({
                                     {language === 'zh' ? '请求体模板 (JSON)' : 'Request Body Template (JSON)'}
                                 </label>
                                 <button
-                                    onClick={handleResetRequest}
+                                    onClick={handleReset}
                                     className="flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary"
                                 >
                                     <RotateCcw className="w-3 h-3" />
@@ -295,17 +271,6 @@ export default function LLMAdapterConfigEditor({
 
                 {showResponseDetails && (
                     <div className="p-4 space-y-4 border-t border-border-subtle bg-background/50">
-                        {/* 重置按钮 */}
-                        <div className="flex justify-end">
-                            <button
-                                onClick={handleResetResponse}
-                                className="flex items-center gap-1 text-[10px] text-text-muted hover:text-text-primary"
-                            >
-                                <RotateCcw className="w-3 h-3" />
-                                {language === 'zh' ? '重置' : 'Reset'}
-                            </button>
-                        </div>
-
                         {/* 内容字段 */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1.5">
@@ -315,143 +280,28 @@ export default function LLMAdapterConfigEditor({
                                 <Input
                                     value={localConfig.response?.contentField || ''}
                                     onChange={(e) => updateResponse({ contentField: e.target.value })}
-                                    placeholder="content"
+                                    placeholder="delta.content"
                                     className="font-mono text-xs"
                                 />
                             </div>
                             <div className="space-y-1.5">
-                                <label className="text-xs text-purple-400">
-                                    {language === 'zh' ? '✨ 思考字段' : '✨ Reasoning Field'}
+                                <label className="flex items-center gap-1 text-xs text-purple-400">
+                                    <Sparkles className="w-3 h-3" />
+                                    {language === 'zh' ? '思考字段 (Thinking)' : 'Reasoning Field'}
                                 </label>
                                 <Input
                                     value={localConfig.response?.reasoningField || ''}
                                     onChange={(e) => updateResponse({ reasoningField: e.target.value || undefined })}
-                                    placeholder="reasoning_content"
+                                    placeholder="delta.reasoning"
                                     className="font-mono text-xs"
                                 />
                             </div>
                         </div>
 
-
-
-                        {/* 工具调用格式选择 */}
-                        <div className="space-y-3 p-3 bg-surface/20 rounded-lg">
-                            <div className="flex items-center justify-between">
-                                <label className="text-xs text-text-secondary font-medium">
-                                    {language === 'zh' ? '工具调用格式' : 'Tool Call Format'}
-                                </label>
-                                <div className="w-32">
-                                    <Select
-                                        value={localConfig.toolParse?.responseFormat || 'json'}
-                                        onChange={(val) => updateToolParse({ responseFormat: val as 'json' | 'xml' | 'mixed' })}
-                                        options={[
-                                            { value: 'json', label: 'JSON' },
-                                            { value: 'xml', label: 'XML' },
-                                            { value: 'mixed', label: 'Mixed' }
-                                        ]}
-                                        className="text-xs"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* XML 配置 (仅当非 JSON 时显示) */}
-                            {localConfig.toolParse?.responseFormat !== 'json' && (
-                                <div className="mt-3 pt-3 border-t border-white/5 grid grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] text-text-muted">
-                                            {language === 'zh' ? '工具标签' : 'Tool Tag'}
-                                        </label>
-                                        <Input
-                                            value={localConfig.toolParse?.xmlConfig?.toolCallTag || 'tool_call'}
-                                            onChange={(e) => updateToolParse({
-                                                xmlConfig: {
-                                                    ...(localConfig.toolParse?.xmlConfig || {
-                                                        toolCallTag: 'tool_call',
-                                                        nameSource: 'name',
-                                                        argsTag: 'arguments',
-                                                        argsFormat: 'json'
-                                                    }),
-                                                    toolCallTag: e.target.value
-                                                }
-                                            })}
-                                            placeholder="tool_call"
-                                            className="font-mono text-[10px]"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] text-text-muted">
-                                            {language === 'zh' ? '名称来源' : 'Name Source'}
-                                        </label>
-                                        <Input
-                                            value={localConfig.toolParse?.xmlConfig?.nameSource || 'name'}
-                                            onChange={(e) => updateToolParse({
-                                                xmlConfig: {
-                                                    ...(localConfig.toolParse?.xmlConfig || {
-                                                        toolCallTag: 'tool_call',
-                                                        nameSource: 'name',
-                                                        argsTag: 'arguments',
-                                                        argsFormat: 'json'
-                                                    }),
-                                                    nameSource: e.target.value
-                                                }
-                                            })}
-                                            placeholder="name or @name"
-                                            className="font-mono text-[10px]"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] text-text-muted">
-                                            {language === 'zh' ? '参数标签' : 'Args Tag'}
-                                        </label>
-                                        <Input
-                                            value={localConfig.toolParse?.xmlConfig?.argsTag || 'arguments'}
-                                            onChange={(e) => updateToolParse({
-                                                xmlConfig: {
-                                                    ...(localConfig.toolParse?.xmlConfig || {
-                                                        toolCallTag: 'tool_call',
-                                                        nameSource: 'name',
-                                                        argsTag: 'arguments',
-                                                        argsFormat: 'json'
-                                                    }),
-                                                    argsTag: e.target.value
-                                                }
-                                            })}
-                                            placeholder="arguments"
-                                            className="font-mono text-[10px]"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] text-text-muted">
-                                            {language === 'zh' ? '参数格式' : 'Args Format'}
-                                        </label>
-                                        <Select
-                                            value={localConfig.toolParse?.xmlConfig?.argsFormat || 'json'}
-                                            onChange={(val) => updateToolParse({
-                                                xmlConfig: {
-                                                    ...(localConfig.toolParse?.xmlConfig || {
-                                                        toolCallTag: 'tool_call',
-                                                        nameSource: 'name',
-                                                        argsTag: 'arguments',
-                                                        argsFormat: 'json'
-                                                    }),
-                                                    argsFormat: val as 'json' | 'xml' | 'key-value'
-                                                }
-                                            })}
-                                            options={[
-                                                { value: 'json', label: 'JSON Content' },
-                                                { value: 'key-value', label: 'Key-Value Tags' }
-                                            ]}
-                                            className="text-[10px]"
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 工具调用路径配置 (JSON/Mixed) */}
+                        {/* 工具调用配置 */}
                         <div className="space-y-3 p-3 bg-surface/20 rounded-lg">
                             <label className="text-xs text-text-secondary font-medium">
-                                {language === 'zh' ? '工具调用解析 (JSON)' : 'Tool Call Parsing (JSON)'}
+                                {language === 'zh' ? '工具调用解析' : 'Tool Call Parsing'}
                             </label>
                             <div className="grid grid-cols-3 gap-3">
                                 <div className="space-y-1">
@@ -461,7 +311,7 @@ export default function LLMAdapterConfigEditor({
                                     <Input
                                         value={localConfig.response?.toolCallField || ''}
                                         onChange={(e) => updateResponse({ toolCallField: e.target.value })}
-                                        placeholder="tool_calls"
+                                        placeholder="delta.tool_calls"
                                         className="font-mono text-[10px]"
                                     />
                                 </div>
@@ -487,6 +337,13 @@ export default function LLMAdapterConfigEditor({
                                         className="font-mono text-[10px]"
                                     />
                                 </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <Switch
+                                    label={language === 'zh' ? '参数已是对象' : 'Args is object'}
+                                    checked={localConfig.response?.argsIsObject || false}
+                                    onChange={(e) => updateResponse({ argsIsObject: e.target.checked })}
+                                />
                             </div>
                         </div>
 

@@ -118,54 +118,29 @@ export class OpenAIProvider extends BaseProvider {
 
       const convertedTools = this.convertTools(tools, adapterConfig?.id)
 
-      // 构建请求体 - bodyTemplate 优先
-      let requestBody: Record<string, unknown>
-
-      if (adapterConfig?.request?.bodyTemplate) {
-        // 使用 bodyTemplate 作为基础
-        requestBody = JSON.parse(JSON.stringify(adapterConfig.request.bodyTemplate))
-
-        // 替换占位符
-        const keysToDelete: string[] = []
-        for (const [key, value] of Object.entries(requestBody)) {
-          if (value === '{{model}}') requestBody[key] = model
-          else if (value === '{{messages}}') requestBody[key] = openaiMessages
-          else if (value === '{{tools}}') {
-            if (convertedTools?.length) {
-              requestBody[key] = convertedTools
-            } else {
-              // 无工具时删除该字段
-              keysToDelete.push(key)
-            }
-          }
-        }
-        // 删除未替换的占位符字段
-        for (const key of keysToDelete) {
-          delete requestBody[key]
-        }
-
-        // 确保核心字段存在
-        if (!('model' in requestBody)) requestBody.model = model
-        if (!('messages' in requestBody)) requestBody.messages = openaiMessages
-        if (!('stream' in requestBody)) requestBody.stream = true
-      } else {
-        // 没有 bodyTemplate，使用默认结构
-        requestBody = {
-          model,
-          messages: openaiMessages,
-          stream: true,
-          max_tokens: maxTokens || 8192,
-        }
+      // 构建请求体 - 使用适配器配置
+      const requestBody: Record<string, unknown> = {
+        model,
+        messages: openaiMessages,
+        stream: true,
+        max_tokens: maxTokens || 8192,
       }
 
-      // 添加工具（如果有且未在 bodyTemplate 中设置）
-      if (convertedTools?.length && !('tools' in requestBody)) {
+      if (convertedTools && convertedTools.length > 0) {
         requestBody.tools = convertedTools
       }
 
-      // 调试日志：打印最终请求体（排除 messages 减少噪音）
-      const debugBody = { ...requestBody, messages: `[${openaiMessages.length} messages]` }
-      this.log('info', 'Final request body:', debugBody)
+      // 应用适配器的请求体模板参数
+      if (adapterConfig?.request?.bodyTemplate) {
+        const template = adapterConfig.request.bodyTemplate
+        for (const [key, value] of Object.entries(template)) {
+          // 跳过占位符
+          if (typeof value === 'string' && value.startsWith('{{')) continue
+          // 不覆盖已设置的核心字段
+          if (['model', 'messages', 'stream', 'tools'].includes(key)) continue
+          requestBody[key] = value
+        }
+      }
 
       const stream = await this.client.chat.completions.create(
         requestBody as unknown as OpenAI.ChatCompletionCreateParamsStreaming,
@@ -197,8 +172,7 @@ export class OpenAIProvider extends BaseProvider {
           onStream({ type: 'text', content: delta.content })
         }
 
-        // 使用适配器配置的 reasoning 字段名
-        // 字段路径相对于 delta 对象（如 'reasoning_content'）
+        // 使用适配器配置的 reasoning 字段名，支持嵌套路径
         const reasoningField = adapterConfig?.response?.reasoningField || 'reasoning'
 
         // 简单的嵌套路径解析函数
