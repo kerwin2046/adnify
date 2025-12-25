@@ -9,7 +9,7 @@ import {
     ChevronDown, ChevronRight, AlertTriangle, HelpCircle,
     FileJson, Zap
 } from 'lucide-react'
-import { Switch, Input } from '../ui'
+import { Input } from '../ui'
 import {
     type LLMAdapterConfig,
     getBuiltinAdapter,
@@ -22,7 +22,6 @@ interface LLMAdapterConfigEditorProps {
     config?: LLMAdapterConfig
     onChange: (id: string, config: LLMAdapterConfig) => void
     language: 'en' | 'zh'
-    // 是否有已配置的 AI（用于判断是否启用 AI 推理）
     hasConfiguredAI?: boolean
 }
 
@@ -33,11 +32,9 @@ export default function LLMAdapterConfigEditor({
     language,
     hasConfiguredAI = false,
 }: LLMAdapterConfigEditorProps) {
-    // 获取所有内置适配器（memoized）
     const builtinAdapters = useMemo(() => getBuiltinAdapters(), [])
-
-    // 确保总是有有效的配置
     const defaultAdapter = getAdapterConfig('openai')
+
     const [localConfig, setLocalConfig] = useState<LLMAdapterConfig>(
         () => config || getBuiltinAdapter(adapterId) || defaultAdapter
     )
@@ -48,14 +45,11 @@ export default function LLMAdapterConfigEditor({
 
     // 当 adapterId 或外部 config 变化时同步状态
     useEffect(() => {
-        // 如果外部传入了配置，且 ID 匹配，则优先使用外部配置
         if (config && config.id === adapterId) {
             setLocalConfig(config)
             setBodyJsonText(JSON.stringify(config.request?.bodyTemplate || {}, null, 2))
             return
         }
-
-        // 否则，如果本地配置的 ID 与当前 adapterId 不符，才加载预设
         if (localConfig.id !== adapterId) {
             const preset = getBuiltinAdapter(adapterId)
             if (preset) {
@@ -65,7 +59,6 @@ export default function LLMAdapterConfigEditor({
         }
     }, [adapterId, config])
 
-    // 更新请求配置
     const updateRequest = useCallback((updates: Partial<LLMAdapterConfig['request']>) => {
         const currentRequest = localConfig.request || defaultAdapter.request
         const newConfig: LLMAdapterConfig = {
@@ -77,7 +70,6 @@ export default function LLMAdapterConfigEditor({
         onChange(newConfig.id, newConfig)
     }, [localConfig, onChange, defaultAdapter])
 
-    // 更新响应配置
     const updateResponse = useCallback((updates: Partial<LLMAdapterConfig['response']>) => {
         const currentResponse = localConfig.response || defaultAdapter.response
         const newConfig: LLMAdapterConfig = {
@@ -89,7 +81,6 @@ export default function LLMAdapterConfigEditor({
         onChange(newConfig.id, newConfig)
     }, [localConfig, onChange, defaultAdapter])
 
-    // 处理请求体 JSON 变更
     const handleBodyJsonChange = useCallback((text: string) => {
         setBodyJsonText(text)
         try {
@@ -101,7 +92,6 @@ export default function LLMAdapterConfigEditor({
         }
     }, [updateRequest])
 
-    // 重置为预设
     const handleReset = useCallback(() => {
         const preset = getBuiltinAdapter(adapterId) || defaultAdapter
         setLocalConfig(preset)
@@ -110,7 +100,6 @@ export default function LLMAdapterConfigEditor({
         onChange(preset.id, preset)
     }, [adapterId, onChange, defaultAdapter])
 
-    // 选择预设
     const handlePresetSelect = useCallback((presetId: string) => {
         const preset = getBuiltinAdapter(presetId)
         if (preset) {
@@ -135,12 +124,12 @@ export default function LLMAdapterConfigEditor({
                             key={adapter.id}
                             onClick={() => handlePresetSelect(adapter.id)}
                             className={`
-                relative flex flex-col items-center justify-center p-2.5 rounded-lg border text-center transition-all duration-200
-                ${adapterId === adapter.id
+                                relative flex flex-col items-center justify-center p-2.5 rounded-lg border text-center transition-all duration-200
+                                ${adapterId === adapter.id
                                     ? 'border-accent bg-accent/10 text-accent shadow-sm'
                                     : 'border-border-subtle bg-surface/30 text-text-muted hover:bg-surface hover:border-border hover:text-text-primary'
                                 }
-              `}
+                            `}
                         >
                             <span className="text-xs font-medium">{adapter.name}</span>
                             <span className="text-[9px] text-text-muted mt-0.5 truncate w-full">{adapter.description}</span>
@@ -152,7 +141,7 @@ export default function LLMAdapterConfigEditor({
                 </div>
             </div>
 
-            {/* AI 智能配置提示（无 AI 时显示引导） */}
+            {/* AI 智能配置提示 */}
             {!hasConfiguredAI && (
                 <div className="p-3 bg-surface/30 rounded-lg border border-border-subtle">
                     <div className="flex items-start gap-2">
@@ -194,7 +183,6 @@ export default function LLMAdapterConfigEditor({
 
                 {showRequestDetails && (
                     <div className="p-4 space-y-4 border-t border-border-subtle bg-background/50">
-                        {/* 端点 */}
                         <div className="space-y-1.5">
                             <label className="text-xs text-text-secondary">
                                 {language === 'zh' ? 'API 端点 (相对路径)' : 'API Endpoint (relative path)'}
@@ -207,7 +195,6 @@ export default function LLMAdapterConfigEditor({
                             />
                         </div>
 
-                        {/* 请求体 */}
                         <div className="space-y-1.5">
                             <div className="flex items-center justify-between">
                                 <label className="text-xs text-text-secondary">
@@ -225,12 +212,7 @@ export default function LLMAdapterConfigEditor({
                                 <textarea
                                     value={bodyJsonText}
                                     onChange={(e) => handleBodyJsonChange(e.target.value)}
-                                    className={`
-                    w-full px-3 py-2 text-xs font-mono leading-5
-                    bg-surface/50 border rounded-lg text-text-primary 
-                    focus:outline-none resize-none
-                    ${jsonError ? 'border-red-500/50' : 'border-border-subtle focus:border-accent'}
-                  `}
+                                    className={`w-full px-3 py-2 text-xs font-mono leading-5 bg-surface/50 border rounded-lg text-text-primary focus:outline-none resize-none ${jsonError ? 'border-red-500/50' : 'border-border-subtle focus:border-accent'}`}
                                     rows={8}
                                     spellCheck={false}
                                 />
@@ -263,15 +245,12 @@ export default function LLMAdapterConfigEditor({
                         {language === 'zh' ? '📤 响应解析配置' : '📤 Response Parsing'}
                     </span>
                     {localConfig.response?.reasoningField && (
-                        <span className="ml-auto text-xs text-purple-400">
-                            ✨ Thinking
-                        </span>
+                        <span className="ml-auto text-xs text-purple-400">✨ Thinking</span>
                     )}
                 </button>
 
                 {showResponseDetails && (
                     <div className="p-4 space-y-4 border-t border-border-subtle bg-background/50">
-                        {/* 内容字段 */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                                 <label className="text-xs text-text-secondary">
@@ -298,7 +277,6 @@ export default function LLMAdapterConfigEditor({
                             </div>
                         </div>
 
-                        {/* 工具调用配置 */}
                         <div className="space-y-3 p-3 bg-surface/20 rounded-lg">
                             <label className="text-xs text-text-secondary font-medium">
                                 {language === 'zh' ? '工具调用解析' : 'Tool Call Parsing'}
@@ -339,15 +317,23 @@ export default function LLMAdapterConfigEditor({
                                 </div>
                             </div>
                             <div className="flex items-center gap-4">
-                                <Switch
-                                    label={language === 'zh' ? '参数已是对象' : 'Args is object'}
-                                    checked={localConfig.response?.argsIsObject || false}
-                                    onChange={(e) => updateResponse({ argsIsObject: e.target.checked })}
-                                />
+                                <label className="inline-flex items-center cursor-pointer gap-3">
+                                    <div className="relative">
+                                        <input 
+                                            type="checkbox" 
+                                            className="w-9 h-5 appearance-none bg-surface-active rounded-full checked:bg-accent transition-colors cursor-pointer"
+                                            checked={localConfig.response?.argsIsObject || false}
+                                            onChange={(e) => updateResponse({ argsIsObject: e.target.checked })}
+                                        />
+                                        <div className={`absolute top-[2px] left-[2px] w-4 h-4 bg-text-secondary rounded-full transition-transform pointer-events-none ${localConfig.response?.argsIsObject ? 'translate-x-4 bg-white' : ''}`} />
+                                    </div>
+                                    <span className="text-sm font-medium text-text-primary">
+                                        {language === 'zh' ? '参数已是对象' : 'Args is object'}
+                                    </span>
+                                </label>
                             </div>
                         </div>
 
-                        {/* 结束标记 */}
                         <div className="space-y-1.5">
                             <label className="text-xs text-text-secondary">
                                 {language === 'zh' ? '流结束标记' : 'Stream Done Marker'}

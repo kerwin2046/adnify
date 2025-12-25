@@ -8,6 +8,7 @@ import { Cpu, Settings2, Code, Keyboard, Database, Shield, Monitor } from 'lucid
 import { useStore } from '@store'
 import { PROVIDERS } from '@/shared/config/providers'
 import { getEditorConfig, saveEditorConfig } from '@renderer/config/editorConfig'
+import { settingsService } from '@services/settingsService'
 import KeybindingPanel from '@components/panels/KeybindingPanel'
 import { Button, Modal, Select } from '@components/ui'
 import { SettingsTab, EditorSettingsState, LANGUAGES } from './types'
@@ -64,11 +65,15 @@ export default function SettingsModal() {
     useEffect(() => { setLocalAiInstructions(aiInstructions) }, [aiInstructions])
 
     const handleSave = async () => {
-        // Save LLM config
+        // 更新 Store 状态
         setLLMConfig(localConfig)
-        await window.electronAPI.setSetting('llmConfig', localConfig)
+        setLanguage(localLanguage)
+        setAutoApprove(localAutoApprove)
+        setPromptTemplateId(localPromptTemplateId)
+        setAgentConfig(localAgentConfig)
+        setAiInstructions(localAiInstructions)
 
-        // Save provider configs
+        // 更新 provider configs
         const updatedProviderConfigs = {
             ...localProviderConfigs,
             [localConfig.provider]: {
@@ -82,27 +87,32 @@ export default function SettingsModal() {
             }
         }
         setProviderConfig(localConfig.provider, updatedProviderConfigs[localConfig.provider])
-        await window.electronAPI.setSetting('providerConfigs', updatedProviderConfigs)
 
-        // Save language
-        setLanguage(localLanguage)
-        await window.electronAPI.setSetting('language', localLanguage)
-
-        // Save auto approve
-        setAutoApprove(localAutoApprove)
-        await window.electronAPI.setSetting('autoApprove', localAutoApprove)
-
-        // Save prompt template
-        setPromptTemplateId(localPromptTemplateId)
-        await window.electronAPI.setSetting('promptTemplateId', localPromptTemplateId)
-
-        // Save agent config
-        setAgentConfig(localAgentConfig)
-        await window.electronAPI.setSetting('agentConfig', localAgentConfig)
-
-        // Save AI instructions
-        setAiInstructions(localAiInstructions)
-        await window.electronAPI.setSetting('aiInstructions', localAiInstructions)
+        // 使用 settingsService 统一保存到 app-settings
+        await settingsService.saveAll({
+            llmConfig: localConfig as any,
+            language: localLanguage,
+            autoApprove: localAutoApprove,
+            promptTemplateId: localPromptTemplateId,
+            agentConfig: localAgentConfig,
+            providerConfigs: updatedProviderConfigs as any,
+            aiInstructions: localAiInstructions,
+            onboardingCompleted: true,
+            editorSettings: {
+                fontSize: editorSettings.fontSize,
+                tabSize: editorSettings.tabSize,
+                wordWrap: editorSettings.wordWrap,
+                lineNumbers: 'on',
+                minimap: editorSettings.minimap,
+                bracketPairColorization: true,
+                formatOnSave: true,
+                autoSave: 'off',
+                theme: 'adnify-dark',
+                completionEnabled: editorSettings.completionEnabled,
+                completionDebounceMs: editorSettings.completionDebounceMs,
+                completionMaxTokens: editorSettings.completionMaxTokens,
+            },
+        })
 
         // Save editor settings
         const newEditorConfig = {

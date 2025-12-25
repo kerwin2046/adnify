@@ -83,8 +83,8 @@ export async function buildSystemPrompt(
 		)
 	}
 
-	// Agent 模式特定指导（仅在 agent 模式下添加计划管理部分）
-	if (mode === 'agent') {
+	// Plan 模式特定指导（仅在 plan 模式下添加计划管理部分）
+	if (mode === 'plan') {
 		const store = useAgentStore.getState()
 		const plan = store.plan
 

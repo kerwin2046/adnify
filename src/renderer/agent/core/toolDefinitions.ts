@@ -57,9 +57,118 @@ export const SearchInFileSchema = z.object({
 
 // ===== 文件编辑工具 =====
 
+/**
+ * 智能预处理 search_replace_blocks
+ * 支持多种 LLM 输出格式的自动检测和转换
+ */
+function preprocessSearchReplaceBlocks(input: unknown): string {
+    // 1. 已经是正确格式的字符串
+    if (typeof input === 'string') {
+        // 检查是否已经是正确格式
+        if (/<{3,}\s*SEARCH/i.test(input)) {
+            return input
+        }
+        
+        // 尝试解析为 JSON（LLM 可能输出 JSON 字符串）
+        try {
+            const parsed = JSON.parse(input)
+            if (typeof parsed === 'object') {
+                return convertObjectToBlocks(parsed)
+            }
+        } catch {
+            // 不是 JSON，返回原字符串
+        }
+        
+        return input
+    }
+    
+    // 2. 对象格式
+    if (typeof input === 'object' && input !== null) {
+        return convertObjectToBlocks(input)
+    }
+    
+    return String(input)
+}
+
+/**
+ * 将各种对象格式转换为标准 SEARCH/REPLACE 块
+ */
+function convertObjectToBlocks(obj: unknown): string {
+    if (!obj || typeof obj !== 'object') return ''
+    
+    const blocks: string[] = []
+    
+    // 数组格式
+    if (Array.isArray(obj)) {
+        for (const item of obj) {
+            const block = convertSingleBlock(item)
+            if (block) blocks.push(block)
+        }
+        return blocks.join('\n\n')
+    }
+    
+    // 单个对象
+    const block = convertSingleBlock(obj)
+    if (block) return block
+    
+    // 嵌套格式 { blocks: [...] } 或 { changes: [...] }
+    const record = obj as Record<string, unknown>
+    for (const key of ['blocks', 'changes', 'edits', 'replacements']) {
+        if (Array.isArray(record[key])) {
+            for (const item of record[key]) {
+                const b = convertSingleBlock(item)
+                if (b) blocks.push(b)
+            }
+            if (blocks.length > 0) return blocks.join('\n\n')
+        }
+    }
+    
+    return ''
+}
+
+/**
+ * 转换单个块对象为标准格式
+ * 支持多种键名变体
+ */
+function convertSingleBlock(item: unknown): string | null {
+    if (!item || typeof item !== 'object') return null
+    
+    const obj = item as Record<string, unknown>
+    
+    // 支持的键名变体（不区分大小写）
+    const searchKeys = ['SEARCH', 'search', 'Search', 'old', 'OLD', 'Old', 'original', 'ORIGINAL', 'Original', 'find', 'FIND', 'Find', 'from', 'FROM', 'From']
+    const replaceKeys = ['REPLACE', 'replace', 'Replace', 'new', 'NEW', 'New', 'replacement', 'REPLACEMENT', 'Replacement', 'to', 'TO', 'To', 'with', 'WITH', 'With']
+    
+    let searchContent: string | null = null
+    let replaceContent: string | null = null
+    
+    for (const key of searchKeys) {
+        if (key in obj && typeof obj[key] === 'string') {
+            searchContent = obj[key] as string
+            break
+        }
+    }
+    
+    for (const key of replaceKeys) {
+        if (key in obj && typeof obj[key] === 'string') {
+            replaceContent = obj[key] as string
+            break
+        }
+    }
+    
+    if (searchContent !== null && replaceContent !== null) {
+        return `<<<<<<< SEARCH\n${searchContent}\n=======\n${replaceContent}\n>>>>>>> REPLACE`
+    }
+    
+    return null
+}
+
 export const EditFileSchema = z.object({
     path: z.string().min(1, 'File path is required'),
-    search_replace_blocks: z.string().min(1, 'SEARCH/REPLACE blocks are required')
+    search_replace_blocks: z.preprocess(
+        preprocessSearchReplaceBlocks,
+        z.string().min(1, 'SEARCH/REPLACE blocks are required')
+    )
 }).refine(
     data => {
         const blocks = data.search_replace_blocks
@@ -67,7 +176,7 @@ export const EditFileSchema = z.object({
         const hasReplace = />{3,}\s*REPLACE/i.test(blocks)
         return hasSearch && hasReplace
     },
-    { message: 'Invalid SEARCH/REPLACE block format' }
+    { message: 'Invalid SEARCH/REPLACE block format. Expected: <<<<<<< SEARCH\\nold\\n=======\\nnew\\n>>>>>>> REPLACE' }
 )
 
 export const WriteFileSchema = z.object({
