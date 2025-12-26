@@ -209,6 +209,9 @@ function AppContent() {
       const newContent = await window.electronAPI.readFile(event.path)
       if (newContent === null) return
 
+      // 如果内容相同，不需要任何操作（可能是自己保存的）
+      if (newContent === openFile.content) return
+
       if (openFile.isDirty) {
         // 文件有未保存更改，显示冲突提示
         const shouldReload = confirm(

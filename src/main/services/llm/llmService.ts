@@ -264,11 +264,16 @@ export class LLMService {
         },
 
         onError: (error) => {
-          logger.system.error('[LLMService] Error', {
-            code: error.code,
-            message: error.message,
-            retryable: error.retryable,
-          })
+          // ABORTED 是用户主动取消，不记录为 ERROR
+          if (error.code === LLMErrorCode.ABORTED) {
+            logger.system.debug('[LLMService] Request aborted by user')
+          } else {
+            logger.system.error('[LLMService] Error', {
+              code: error.code,
+              message: error.message,
+              retryable: error.retryable,
+            })
+          }
           if (!this.window.isDestroyed()) {
             try {
               this.window.webContents.send('llm:error', {

@@ -5,7 +5,7 @@
 
 import OpenAI from 'openai'
 import { BaseProvider } from './base'
-import { ChatParams, ToolDefinition, LLMToolCall, MessageContent } from '../types'
+import { ChatParams, ToolDefinition, LLMToolCall, MessageContent, LLMErrorCode } from '../types'
 import { adapterService } from '../adapterService'
 import { AGENT_DEFAULTS } from '@shared/constants'
 
@@ -271,7 +271,12 @@ export class OpenAIProvider extends BaseProvider {
       })
     } catch (error: unknown) {
       const llmError = this.parseError(error)
-      this.log('error', 'Chat failed', { code: llmError.code, message: llmError.message })
+      // ABORTED 是用户主动取消，不是错误
+      if (llmError.code === LLMErrorCode.ABORTED) {
+        this.log('info', 'Chat aborted by user')
+      } else {
+        this.log('error', 'Chat failed', { code: llmError.code, message: llmError.message })
+      }
       onError(llmError)
     }
   }

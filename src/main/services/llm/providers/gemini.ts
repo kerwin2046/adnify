@@ -254,7 +254,12 @@ export class GeminiProvider extends BaseProvider {
       })
     } catch (error: unknown) {
       const llmError = this.parseError(error)
-      this.log('error', 'Chat failed', { code: llmError.code, message: llmError.message })
+      // ABORTED 是用户主动取消，不是错误
+      if (llmError.code === LLMErrorCode.ABORTED) {
+        this.log('info', 'Chat aborted by user')
+      } else {
+        this.log('error', 'Chat failed', { code: llmError.code, message: llmError.message })
+      }
       onError(llmError)
     }
   }

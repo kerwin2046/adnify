@@ -23,8 +23,8 @@ import {
   getAgentConfig,
   READ_TOOLS,
   RETRYABLE_ERROR_CODES,
-  LoopDetector,
 } from '../utils/AgentConfig'
+import { LoopDetector } from '../utils/LoopDetector'
 import {
   createStreamHandlerState,
   StreamHandlerState,
@@ -263,8 +263,9 @@ class AgentServiceClass {
       // 使用增强的循环检测
       const loopResult = loopDetector.checkLoop(result.toolCalls)
       if (loopResult.isLoop) {
-        logger.agent.error(`[Agent] Loop detected: ${loopResult.reason}`)
-        store.appendToAssistant(this.currentAssistantId!, `\n\n⚠️ ${loopResult.reason} Stopping to prevent infinite loop.`)
+        logger.agent.warn(`[Agent] Loop detected: ${loopResult.reason}`)
+        const suggestion = loopResult.suggestion ? `\n💡 ${loopResult.suggestion}` : ''
+        store.appendToAssistant(this.currentAssistantId!, `\n\n⚠️ ${loopResult.reason}${suggestion}`)
         break
       }
 

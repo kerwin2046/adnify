@@ -145,7 +145,12 @@ export function registerSecureFileHandlers(
       })
       return content
     } catch (e: any) {
-      logger.security.error('[File] read failed:', filePath, e.message)
+      // 文件不存在是正常情况（如可选的规则文件），不记录为 ERROR
+      if (e.code === 'ENOENT') {
+        logger.security.debug('[File] not found:', filePath)
+      } else {
+        logger.security.error('[File] read failed:', filePath, e.message)
+      }
       return null
     }
   })
