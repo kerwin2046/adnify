@@ -164,7 +164,7 @@ const OPENAI_ADAPTER: LLMAdapterConfig = {
 const ANTHROPIC_ADAPTER: LLMAdapterConfig = {
     id: 'anthropic',
     name: 'Anthropic',
-    description: 'Claude API 格式',
+    description: 'Claude API 格式 (支持 Extended Thinking)',
     isBuiltin: true,
     request: {
         endpoint: '/messages',
@@ -173,12 +173,16 @@ const ANTHROPIC_ADAPTER: LLMAdapterConfig = {
             'Content-Type': 'application/json',
             'anthropic-version': '2023-06-01',
         },
+        // bodyTemplate 支持 thinking 配置
+        // 用户可在 UI 中覆盖此配置启用 Extended Thinking
+        // 示例: { thinking: { type: "enabled", budget_tokens: 10000 } }
         bodyTemplate: {
             stream: true,
         }
     },
     response: {
         contentField: 'delta.text',
+        reasoningField: 'thinking',  // Claude 的思考字段
         toolCallField: 'content_block',
         toolNamePath: 'name',
         toolArgsPath: 'input',
@@ -259,7 +263,7 @@ export const PROVIDERS: Record<string, UnifiedProviderConfig> = {
         id: 'anthropic',
         name: 'anthropic',
         displayName: 'Anthropic',
-        description: 'Claude 3.5, Claude 3 等模型',
+        description: 'Claude 3.5, Claude 4 等模型 (支持 Extended Thinking)',
         auth: {
             type: 'api-key',
             placeholder: 'sk-ant-...',
@@ -278,6 +282,7 @@ export const PROVIDERS: Record<string, UnifiedProviderConfig> = {
             streaming: true,
             tools: true,
             vision: true,
+            reasoning: true,  // 支持 Extended Thinking
         },
         defaults: {
             temperature: 0.7,

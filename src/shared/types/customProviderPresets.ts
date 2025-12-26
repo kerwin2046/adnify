@@ -64,11 +64,11 @@ export const ZHIPU_ADAPTER_PRESET: Omit<LLMAdapterConfig, 'id' | 'name'> = {
     response: {
         ...OPENAI_ADAPTER_PRESET.response,
         reasoningField: 'delta.reasoning_content',
-        argsIsObject: true, // 智谱返回的参数已是对象
+        argsIsObject: false, // 智谱返回的参数是 JSON 字符串
     },
 }
 
-/** Anthropic 适配器配置 */
+/** Anthropic 适配器配置 (支持 Extended Thinking) */
 export const ANTHROPIC_ADAPTER_PRESET: Omit<LLMAdapterConfig, 'id' | 'name'> = {
     isBuiltin: false,
     request: {
@@ -78,12 +78,18 @@ export const ANTHROPIC_ADAPTER_PRESET: Omit<LLMAdapterConfig, 'id' | 'name'> = {
             'Content-Type': 'application/json',
             'anthropic-version': '2023-06-01',
         },
+        // 启用 Extended Thinking 示例:
+        // bodyTemplate: {
+        //     stream: true,
+        //     thinking: { type: "enabled", budget_tokens: 10000 }
+        // }
         bodyTemplate: {
             stream: true,
         },
     },
     response: {
         contentField: 'delta.text',
+        reasoningField: 'thinking',
         toolCallField: 'content_block',
         toolNamePath: 'name',
         toolArgsPath: 'input',
@@ -91,6 +97,21 @@ export const ANTHROPIC_ADAPTER_PRESET: Omit<LLMAdapterConfig, 'id' | 'name'> = {
         argsIsObject: true,
         finishReasonField: 'stop_reason',
         doneMarker: 'message_stop',
+    },
+}
+
+/** Anthropic Extended Thinking 适配器配置 */
+export const ANTHROPIC_THINKING_ADAPTER_PRESET: Omit<LLMAdapterConfig, 'id' | 'name'> = {
+    ...ANTHROPIC_ADAPTER_PRESET,
+    request: {
+        ...ANTHROPIC_ADAPTER_PRESET.request,
+        bodyTemplate: {
+            stream: true,
+            thinking: {
+                type: 'enabled',
+                budget_tokens: 10000,
+            },
+        },
     },
 }
 
@@ -159,6 +180,26 @@ export const PRESET_TEMPLATES: PresetTemplate[] = [
             },
         },
         adapterPreset: ANTHROPIC_ADAPTER_PRESET,
+    },
+    {
+        id: 'anthropic-thinking',
+        name: 'Anthropic Extended Thinking',
+        description: '启用 Claude Extended Thinking 模式，支持深度推理',
+        config: {
+            mode: 'anthropic',
+            features: {
+                streaming: true,
+                tools: true,
+                vision: true,
+                reasoning: true,
+            },
+            defaults: {
+                temperature: 1,  // Thinking 模式建议 temperature=1
+                maxTokens: 16000,
+                timeout: 180000,
+            },
+        },
+        adapterPreset: ANTHROPIC_THINKING_ADAPTER_PRESET,
     },
     {
         id: 'custom-blank',

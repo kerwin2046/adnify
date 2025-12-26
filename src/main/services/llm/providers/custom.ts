@@ -359,7 +359,26 @@ export class CustomProvider extends BaseProvider {
                             if (id && existing) existing.id = String(id)
                             if (argsData && existing) {
                                 if (argsIsObject) {
-                                    existing.arguments = argsData as Record<string, unknown>
+                                    // 参数已是对象，直接使用
+                                    if (typeof argsData === 'object' && argsData !== null && !Array.isArray(argsData)) {
+                                        existing.arguments = argsData as Record<string, unknown>
+                                    } else if (typeof argsData === 'string') {
+                                        // 虽然配置说是对象，但实际是字符串，尝试解析
+                                        try {
+                                            existing.arguments = JSON.parse(argsData)
+                                        } catch {
+                                            // 解析失败，可能是不完整的 JSON，累加
+                                            if (!existing._argsBuffer) {
+                                                existing._argsBuffer = ''
+                                            }
+                                            existing._argsBuffer += argsData
+                                            try {
+                                                existing.arguments = JSON.parse(existing._argsBuffer)
+                                            } catch {
+                                                // 继续累加
+                                            }
+                                        }
+                                    }
                                 } else if (typeof argsData === 'string') {
                                     // 累加 JSON 字符串片段
                                     if (!existing._argsBuffer) {
