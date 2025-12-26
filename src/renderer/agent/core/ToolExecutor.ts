@@ -424,11 +424,6 @@ export async function executeTool(
           }
         }
 
-        // 验证行号范围
-        if (start_line < 1 || end_line > fileLineCount || start_line > end_line) {
-          return { success: false, result: '', error: `Invalid line range: ${start_line}-${end_line}. File has ${fileLineCount} lines.` }
-        }
-
         // 替换行
         // splice 参数: start index (0-indexed), delete count, items to add
         lines.splice(start_line - 1, end_line - start_line + 1, ...content.split('\n'))
