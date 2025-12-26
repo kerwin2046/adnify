@@ -4,7 +4,7 @@
  */
 
 import { logger } from '@shared/utils/Logger'
-import { LLMProvider, ChatParams, LLMError, LLMErrorCode } from '../types'
+import { LLMProvider, ChatParams, LLMErrorClass, LLMErrorCode } from '../types'
 
 export abstract class BaseProvider implements LLMProvider {
   protected name: string
@@ -16,9 +16,9 @@ export abstract class BaseProvider implements LLMProvider {
   abstract chat(params: ChatParams): Promise<void>
 
   /**
-   * 解析 API 错误，转换为统一的 LLMError
+   * 解析 API 错误，转换为统一的 LLMErrorClass
    */
-  protected parseError(error: unknown): LLMError {
+  protected parseError(error: unknown): LLMErrorClass {
     const err = error as {
       message?: string
       status?: number
@@ -30,7 +30,7 @@ export abstract class BaseProvider implements LLMProvider {
     const status = err.status || err.statusCode
 
     if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND') {
-      return new LLMError(
+      return new LLMErrorClass(
         'Network error: Unable to connect to API',
         LLMErrorCode.NETWORK_ERROR,
         undefined,
@@ -39,19 +39,19 @@ export abstract class BaseProvider implements LLMProvider {
     }
 
     if (err.code === 'ETIMEDOUT' || err.name === 'TimeoutError') {
-      return new LLMError('Request timeout', LLMErrorCode.TIMEOUT, undefined, true)
+      return new LLMErrorClass('Request timeout', LLMErrorCode.TIMEOUT, undefined, true)
     }
 
     if (err.name === 'AbortError') {
-      return new LLMError('Request aborted', LLMErrorCode.ABORTED, undefined, false)
+      return new LLMErrorClass('Request aborted', LLMErrorCode.ABORTED, undefined, false)
     }
 
     if (status) {
       switch (status) {
         case 401:
-          return new LLMError('Invalid API key', LLMErrorCode.INVALID_API_KEY, status, false)
+          return new LLMErrorClass('Invalid API key', LLMErrorCode.INVALID_API_KEY, status, false)
         case 429:
-          return new LLMError(
+          return new LLMErrorClass(
             'Rate limit exceeded. Please try again later.',
             LLMErrorCode.RATE_LIMIT,
             status,
@@ -59,14 +59,14 @@ export abstract class BaseProvider implements LLMProvider {
           )
         case 402:
         case 403:
-          return new LLMError(
+          return new LLMErrorClass(
             'Quota exceeded or access denied',
             LLMErrorCode.QUOTA_EXCEEDED,
             status,
             false
           )
         case 404:
-          return new LLMError(
+          return new LLMErrorClass(
             'Model not found or invalid endpoint',
             LLMErrorCode.MODEL_NOT_FOUND,
             status,
@@ -74,14 +74,14 @@ export abstract class BaseProvider implements LLMProvider {
           )
         case 400:
           if (message.includes('context') || message.includes('token')) {
-            return new LLMError(
+            return new LLMErrorClass(
               'Context length exceeded. Try reducing the conversation history.',
               LLMErrorCode.CONTEXT_LENGTH_EXCEEDED,
               status,
               false
             )
           }
-          return new LLMError(
+          return new LLMErrorClass(
             `Invalid request: ${message}`,
             LLMErrorCode.INVALID_REQUEST,
             status,
@@ -90,11 +90,11 @@ export abstract class BaseProvider implements LLMProvider {
         case 500:
         case 502:
         case 503:
-          return new LLMError('Server error. Please try again.', LLMErrorCode.UNKNOWN, status, true)
+          return new LLMErrorClass('Server error. Please try again.', LLMErrorCode.UNKNOWN, status, true)
       }
     }
 
-    return new LLMError(message, LLMErrorCode.UNKNOWN, status, false, error)
+    return new LLMErrorClass(message, LLMErrorCode.UNKNOWN, status, false, error)
   }
 
   /**

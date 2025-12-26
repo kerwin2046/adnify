@@ -5,7 +5,7 @@
 
 import OpenAI from 'openai'
 import { BaseProvider } from './base'
-import { ChatParams, ToolDefinition, ToolCall, MessageContent } from '../types'
+import { ChatParams, ToolDefinition, LLMToolCall, MessageContent } from '../types'
 import { adapterService } from '../adapterService'
 import { AGENT_DEFAULTS } from '@shared/constants'
 
@@ -154,7 +154,7 @@ export class OpenAIProvider extends BaseProvider {
       let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined
 
       // 从适配器配置获取 reasoning 字段名
-      const toolCalls: ToolCall[] = []
+      const toolCalls: LLMToolCall[] = []
       let currentToolCall: { id?: string; name?: string; argsString: string } | null = null
 
       for await (const chunk of stream) {
@@ -280,7 +280,7 @@ export class OpenAIProvider extends BaseProvider {
     id?: string
     name?: string
     argsString: string
-  }): ToolCall | null {
+  }): LLMToolCall | null {
     if (!tc.id || !tc.name) return null
 
     let argsStr = tc.argsString || '{}'

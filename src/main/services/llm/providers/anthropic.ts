@@ -6,7 +6,7 @@
 import { logger } from '@shared/utils/Logger'
 import Anthropic from '@anthropic-ai/sdk'
 import { BaseProvider } from './base'
-import { ChatParams, ToolDefinition, ToolCall, MessageContent } from '../types'
+import { ChatParams, ToolDefinition, LLMToolCall, MessageContent } from '../types'
 import { adapterService } from '../adapterService'
 import { AGENT_DEFAULTS } from '@shared/constants'
 
@@ -148,7 +148,7 @@ export class AnthropicProvider extends BaseProvider {
       )
 
       let fullContent = ''
-      const toolCalls: ToolCall[] = []
+      const toolCalls: LLMToolCall[] = []
 
       stream.on('text', (text) => {
         fullContent += text
@@ -168,7 +168,7 @@ export class AnthropicProvider extends BaseProvider {
 
       for (const block of finalMessage.content) {
         if (block.type === 'tool_use') {
-          const toolCall: ToolCall = {
+          const toolCall: LLMToolCall = {
             id: block.id,
             name: block.name,
             arguments: block.input as Record<string, unknown>,

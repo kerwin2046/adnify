@@ -1,0 +1,217 @@
+/**
+ * LLM 相关类型定义
+ * 单一来源 - 所有 LLM 相关类型从此文件导出
+ */
+
+import type { LLMAdapterConfig } from '@/shared/config/providers'
+
+// ============================================
+// 消息内容类型
+// ============================================
+
+export interface TextContent {
+    type: 'text'
+    text: string
+}
+
+export interface ImageContent {
+    type: 'image'
+    source: {
+        type: 'base64' | 'url'
+        media_type: string
+        data: string
+    }
+}
+
+export type MessageContentPart = TextContent | ImageContent
+export type MessageContent = string | MessageContentPart[]
+
+// ============================================
+// LLM 消息类型
+// ============================================
+
+export interface LLMMessage {
+    role: 'user' | 'assistant' | 'system' | 'tool'
+    content: MessageContent
+    /** OpenAI 格式的工具调用 */
+    tool_calls?: LLMToolCallMessage[]
+    /** 工具结果对应的调用 ID (OpenAI 格式) */
+    tool_call_id?: string
+    /** 工具结果对应的调用 ID (别名，兼容) */
+    toolCallId?: string
+    /** 工具名称（tool role 时使用） */
+    toolName?: string
+    /** 工具名称（别名） */
+    name?: string
+}
+
+/** OpenAI 格式的工具调用消息 */
+export interface LLMToolCallMessage {
+    id: string
+    type: 'function'
+    function: {
+        name: string
+        arguments: string
+    }
+}
+
+// ============================================
+// Provider 配置
+// ============================================
+
+export type ProviderType = 'openai' | 'anthropic' | 'gemini' | 'deepseek' | 'groq' | 'mistral' | 'ollama' | 'custom'
+
+export interface LLMConfig {
+    provider: string
+    model: string
+    apiKey: string
+    baseUrl?: string
+    timeout?: number
+    maxTokens?: number
+    temperature?: number
+    topP?: number
+    adapterId?: string
+    adapterConfig?: LLMAdapterConfig
+}
+
+export interface LLMParameters {
+    temperature: number
+    topP: number
+    maxTokens: number
+    frequencyPenalty?: number
+    presencePenalty?: number
+}
+
+// ============================================
+// LLM 响应类型
+// ============================================
+
+/** LLM 返回的工具调用（无 UI 状态） */
+export interface LLMToolCall {
+    id: string
+    name: string
+    arguments: Record<string, unknown>
+}
+
+export interface LLMStreamChunk {
+    type: 'text' | 'tool_call' | 'tool_call_start' | 'tool_call_delta' | 'tool_call_end' | 'reasoning' | 'error'
+    content?: string
+    toolCall?: LLMToolCall
+    toolCallDelta?: {
+        id?: string
+        name?: string
+        args?: string
+    }
+    error?: string
+}
+
+export interface LLMResult {
+    content: string
+    reasoning?: string
+    toolCalls?: LLMToolCall[]
+    usage?: {
+        promptTokens: number
+        completionTokens: number
+        totalTokens: number
+    }
+}
+
+// ============================================
+// 错误类型
+// ============================================
+
+export interface LLMError {
+    message: string
+    code: string
+    retryable: boolean
+}
+
+export enum LLMErrorCode {
+    NETWORK_ERROR = 'NETWORK_ERROR',
+    TIMEOUT = 'TIMEOUT',
+    INVALID_API_KEY = 'INVALID_API_KEY',
+    RATE_LIMIT = 'RATE_LIMIT',
+    QUOTA_EXCEEDED = 'QUOTA_EXCEEDED',
+    MODEL_NOT_FOUND = 'MODEL_NOT_FOUND',
+    CONTEXT_LENGTH_EXCEEDED = 'CONTEXT_LENGTH_EXCEEDED',
+    INVALID_REQUEST = 'INVALID_REQUEST',
+    ABORTED = 'ABORTED',
+    UNKNOWN = 'UNKNOWN',
+}
+
+// ============================================
+// IPC 通信参数
+// ============================================
+
+export interface LLMSendMessageParams {
+    config: LLMConfig
+    messages: LLMMessage[]
+    tools?: ToolDefinition[]
+    systemPrompt?: string
+}
+
+// ============================================
+// 工具定义（发送给 LLM）
+// ============================================
+
+export interface ToolDefinition {
+    name: string
+    description: string
+    /** 审批类型（可选） */
+    approvalType?: ToolApprovalType
+    parameters: {
+        type: 'object'
+        properties: Record<string, ToolPropertySchema>
+        required?: string[]
+    }
+}
+
+export interface ToolPropertySchema {
+    type: string
+    description?: string
+    enum?: string[]
+    items?: ToolPropertySchema
+    properties?: Record<string, ToolPropertySchema>
+    required?: string[]
+}
+
+// ============================================
+// 工具执行（Renderer 使用）
+// ============================================
+
+export type ToolStatus = 'pending' | 'awaiting' | 'running' | 'success' | 'error' | 'rejected'
+export type ToolApprovalType = 'none' | 'terminal' | 'dangerous'
+export type ToolResultType = 'tool_request' | 'running_now' | 'success' | 'tool_error' | 'rejected'
+
+/** UI 层的工具调用记录（包含执行状态） */
+export interface ToolCall {
+    id: string
+    name: string
+    arguments: Record<string, unknown>
+    status: ToolStatus
+    result?: string
+    error?: string
+}
+
+export interface ToolExecutionResult {
+    success: boolean
+    result: string
+    error?: string
+    meta?: Record<string, unknown>
+}
+
+export interface ToolExecutionContext {
+    workspacePath: string | null
+    currentAssistantId?: string | null
+}
+
+export type ToolExecutor = (
+    args: Record<string, unknown>,
+    context: ToolExecutionContext
+) => Promise<ToolExecutionResult>
+
+export interface ValidationResult<T = unknown> {
+    success: boolean
+    data?: T
+    error?: string
+}

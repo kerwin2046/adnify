@@ -3,7 +3,7 @@
  * 统一导出工具相关功能
  */
 
-// 类型
+// 类型 - 从 shared 重新导出
 export type {
     ToolDefinition,
     ToolExecutionResult,
@@ -14,9 +14,10 @@ export type {
     ToolResultType,
     ToolCall,
     ToolApprovalType,
-    ToolCategory,
-    ToolMetadata,
-} from './types'
+} from '@/shared/types'
+
+// 元数据类型 - 从 agentConfig 导出
+export type { ToolCategory, ToolMetadata } from '@/shared/config/agentConfig'
 
 // 注册表
 export { toolRegistry } from './registry'

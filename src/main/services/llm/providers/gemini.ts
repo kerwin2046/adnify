@@ -5,7 +5,7 @@
 
 import { GoogleGenerativeAI, SchemaType, Content } from '@google/generative-ai'
 import { BaseProvider } from './base'
-import { ChatParams, ToolDefinition, ToolCall, LLMError, LLMErrorCode } from '../types'
+import { ChatParams, ToolDefinition, LLMToolCall, LLMErrorClass, LLMErrorCode } from '../types'
 import { adapterService } from '../adapterService'
 import { AGENT_DEFAULTS } from '@shared/constants'
 
@@ -73,7 +73,7 @@ export class GeminiProvider extends BaseProvider {
 
       // 检查是否已经被中止
       if (signal?.aborted) {
-        onError(new LLMError('Request aborted', LLMErrorCode.ABORTED, undefined, false))
+        onError(new LLMErrorClass('Request aborted', LLMErrorCode.ABORTED, undefined, false))
         return
       }
 
@@ -180,13 +180,13 @@ export class GeminiProvider extends BaseProvider {
       const result = await chat.sendMessageStream(lastUserMessage)
 
       let fullContent = ''
-      const toolCalls: ToolCall[] = []
+      const toolCalls: LLMToolCall[] = []
 
       for await (const chunk of result.stream) {
         // 检查中止信号
         if (signal?.aborted) {
           this.log('info', 'Stream aborted by user')
-          onError(new LLMError('Request aborted', LLMErrorCode.ABORTED, undefined, false))
+          onError(new LLMErrorClass('Request aborted', LLMErrorCode.ABORTED, undefined, false))
           return
         }
 
@@ -215,7 +215,7 @@ export class GeminiProvider extends BaseProvider {
         if (candidate?.content?.parts) {
           for (const part of candidate.content.parts) {
             if ('functionCall' in part && part.functionCall) {
-              const toolCall: ToolCall = {
+              const toolCall: LLMToolCall = {
                 id: `gemini-${Date.now()}-${Math.random().toString(36).slice(2)}`,
                 name: part.functionCall.name,
                 arguments: part.functionCall.args as Record<string, unknown>,

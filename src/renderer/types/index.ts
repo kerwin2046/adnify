@@ -9,11 +9,12 @@ export type {
   FileSnapshot,
   MessageContent,
   MessageContentPart,
+  TextContent,
+  ImageContent,
   LLMMessage,
   LLMStreamChunk,
   LLMToolCall,
   LLMResult,
-  LLMError,
   LLMConfig,
   LLMSendMessageParams,
   ToolDefinition,
@@ -48,6 +49,9 @@ export type {
   LspInlayHint,
   LspPrepareRename,
 } from '@shared/types'
+
+// LLMError 是接口类型（从 shared 导出）
+export type { LLMError } from '@shared/types'
 
 // Provider 类型
 export type ProviderType = 'openai' | 'anthropic' | 'gemini' | 'custom'

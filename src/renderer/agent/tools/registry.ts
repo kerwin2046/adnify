@@ -8,6 +8,7 @@ import { logger } from '@utils/Logger'
 import { TOOL_SCHEMAS } from './schemas'
 import { TOOL_DEFINITIONS } from './definitions'
 import { DEFAULT_TOOL_METADATA } from '@/shared/config/agentConfig'
+import type { ToolCategory } from '@/shared/config/agentConfig'
 import type {
     ToolDefinition,
     ToolExecutionResult,
@@ -15,8 +16,7 @@ import type {
     ToolExecutor,
     ValidationResult,
     ToolApprovalType,
-    ToolCategory,
-} from './types'
+} from '@/shared/types'
 
 // ===== 内部类型 =====
 

@@ -6,7 +6,7 @@
  */
 
 import { BaseProvider } from './base'
-import { ChatParams, ToolDefinition, ToolCall, LLMError, LLMErrorCode } from '../types'
+import { ChatParams, ToolDefinition, LLMToolCall, LLMErrorClass, LLMErrorCode } from '../types'
 import { getByPath } from '../utils/jsonPath'
 import type { LLMAdapterConfig } from '@shared/config/providers'
 import { AGENT_DEFAULTS } from '@shared/constants'
@@ -20,7 +20,7 @@ interface RequestData {
 }
 
 /** 扩展的 ToolCall 类型，用于累加参数 */
-interface ToolCallWithBuffer extends ToolCall {
+interface ToolCallWithBuffer extends LLMToolCall {
     _argsBuffer?: string
 }
 
@@ -87,7 +87,7 @@ export class CustomProvider extends BaseProvider {
 
                 if (!httpResponse.ok) {
                     const errorText = await httpResponse.text()
-                    throw new LLMError(
+                    throw new LLMErrorClass(
                         `HTTP ${httpResponse.status}: ${errorText}`,
                         this.mapHttpErrorCode(httpResponse.status),
                         httpResponse.status,
@@ -109,11 +109,6 @@ export class CustomProvider extends BaseProvider {
 
     /**
      * 构建 HTTP 请求
-     * 
-     * 新架构：
-     * 1. 核心字段（model, messages, tools）由系统自动填充
-     * 2. LLM 参数（max_tokens, temperature, top_p）从 params 传入
-     * 3. bodyTemplate 只包含结构性配置（stream, tool_choice 等）
      */
     private buildRequest(params: {
         requestConfig: LLMAdapterConfig['request']
@@ -143,17 +138,17 @@ export class CustomProvider extends BaseProvider {
         // 转换工具定义
         const convertedTools = this.convertTools(tools)
 
-        // 1. 先从 bodyTemplate 构建基础请求体（只包含结构性配置）
+        // 1. 先从 bodyTemplate 构建基础请求体
         const body = this.buildBodyFromTemplate(requestConfig.bodyTemplate)
 
-        // 2. 填充核心字段（系统自动填充，不可覆盖）
+        // 2. 填充核心字段
         body.model = model
         body.messages = convertedMessages
         if (convertedTools && convertedTools.length > 0) {
             body.tools = convertedTools
         }
 
-        // 3. 填充 LLM 参数（从 params 传入）
+        // 3. 填充 LLM 参数
         body.max_tokens = maxTokens || AGENT_DEFAULTS.DEFAULT_MAX_TOKENS
         if (temperature !== undefined) {
             body.temperature = temperature
@@ -171,17 +166,17 @@ export class CustomProvider extends BaseProvider {
     }
 
     /**
-     * 从模板构建请求体（只处理结构性配置，跳过占位符）
+     * 从模板构建请求体
      */
     private buildBodyFromTemplate(template: Record<string, unknown>): Record<string, unknown> {
         const body: Record<string, unknown> = {}
 
         for (const [key, value] of Object.entries(template)) {
-            // 跳过占位符（兼容旧配置）
+            // 跳过占位符
             if (typeof value === 'string' && value.startsWith('{{') && value.endsWith('}}')) {
                 continue
             }
-            // 跳过核心字段（由系统填充）
+            // 跳过核心字段
             if (['model', 'messages', 'tools', 'max_tokens', 'temperature', 'top_p'].includes(key)) {
                 continue
             }
@@ -205,12 +200,10 @@ export class CustomProvider extends BaseProvider {
     ): Array<{ role: string; content: unknown; tool_call_id?: string }> {
         const result: Array<{ role: string; content: unknown; tool_call_id?: string }> = []
 
-        // 添加 system prompt
         if (systemPrompt) {
             result.push({ role: 'system', content: systemPrompt })
         }
 
-        // 转换消息
         for (const msg of messages) {
             if (msg.role === 'system') {
                 result.push({ role: 'system', content: msg.content })
@@ -262,7 +255,7 @@ export class CustomProvider extends BaseProvider {
     ): Promise<void> {
         const reader = httpResponse.body?.getReader()
         if (!reader) {
-            throw new LLMError('Response body is not readable', LLMErrorCode.NETWORK_ERROR)
+            throw new LLMErrorClass('Response body is not readable', LLMErrorCode.NETWORK_ERROR)
         }
 
         const decoder = new TextDecoder()
@@ -295,19 +288,16 @@ export class CustomProvider extends BaseProvider {
                     const trimmed = line.trim()
                     if (!trimmed) continue
 
-                    // 处理 SSE data 前缀
                     let data = trimmed
                     if (trimmed.startsWith('data:')) {
                         data = trimmed.slice(5).trim()
                     }
 
-                    // 检查结束标记
                     if (data === doneMarker) {
                         streamEnded = true
                         break
                     }
 
-                    // 解析 JSON
                     let parsed: any
                     try {
                         parsed = JSON.parse(data)
@@ -315,7 +305,6 @@ export class CustomProvider extends BaseProvider {
                         continue
                     }
 
-                    // 获取 choice
                     const choices = parsed.choices
                     if (!choices || !Array.isArray(choices) || choices.length === 0) continue
                     const choice = choices[0]
@@ -350,28 +339,24 @@ export class CustomProvider extends BaseProvider {
                                 existing = {
                                     id: String(id),
                                     name: typeof name === 'string' ? name : '',
-                                    arguments: {} as Record<string, unknown>,
+                                    arguments: {},
+                                    _argsBuffer: '',
                                 }
                                 toolCalls.set(index, existing)
                             }
 
-                            if (typeof name === 'string' && existing) existing.name = name
-                            if (id && existing) existing.id = String(id)
-                            if (argsData && existing) {
+                            if (typeof name === 'string') existing.name = name
+                            if (id) existing.id = String(id)
+                            
+                            if (argsData) {
                                 if (argsIsObject) {
-                                    // 参数已是对象，直接使用
                                     if (typeof argsData === 'object' && argsData !== null && !Array.isArray(argsData)) {
                                         existing.arguments = argsData as Record<string, unknown>
                                     } else if (typeof argsData === 'string') {
-                                        // 虽然配置说是对象，但实际是字符串，尝试解析
                                         try {
                                             existing.arguments = JSON.parse(argsData)
                                         } catch {
-                                            // 解析失败，可能是不完整的 JSON，累加
-                                            if (!existing._argsBuffer) {
-                                                existing._argsBuffer = ''
-                                            }
-                                            existing._argsBuffer += argsData
+                                            existing._argsBuffer = (existing._argsBuffer || '') + argsData
                                             try {
                                                 existing.arguments = JSON.parse(existing._argsBuffer)
                                             } catch {
@@ -380,11 +365,7 @@ export class CustomProvider extends BaseProvider {
                                         }
                                     }
                                 } else if (typeof argsData === 'string') {
-                                    // 累加 JSON 字符串片段
-                                    if (!existing._argsBuffer) {
-                                        existing._argsBuffer = ''
-                                    }
-                                    existing._argsBuffer += argsData
+                                    existing._argsBuffer = (existing._argsBuffer || '') + argsData
                                     try {
                                         existing.arguments = JSON.parse(existing._argsBuffer)
                                     } catch {
@@ -398,9 +379,16 @@ export class CustomProvider extends BaseProvider {
             }
 
             // 完成：发送工具调用
+            const finalToolCalls: LLMToolCall[] = []
             for (const tc of toolCalls.values()) {
                 if (tc.name) {
-                    onToolCall?.(tc)
+                    const toolCall: LLMToolCall = {
+                        id: tc.id,
+                        name: tc.name,
+                        arguments: tc.arguments,
+                    }
+                    finalToolCalls.push(toolCall)
+                    onToolCall?.(toolCall)
                 }
             }
 
@@ -408,7 +396,7 @@ export class CustomProvider extends BaseProvider {
             onComplete?.({
                 content: fullContent,
                 reasoning: fullReasoning || undefined,
-                toolCalls: Array.from(toolCalls.values()).filter(tc => tc.name),
+                toolCalls: finalToolCalls.length > 0 ? finalToolCalls : undefined,
             })
         } finally {
             reader.releaseLock()

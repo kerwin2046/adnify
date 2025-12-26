@@ -3,8 +3,7 @@
  * 发送给 LLM 的工具描述（OpenAI Function Calling 格式）
  */
 
-import type { ToolDefinition } from './types'
-import type { ToolApprovalType } from '@/shared/config/agentConfig'
+import type { ToolDefinition, ToolApprovalType } from '@/shared/types'
 
 // ===== 工具定义 =====
 

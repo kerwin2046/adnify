@@ -4,7 +4,7 @@
  */
 
 import { logger } from '@utils/Logger'
-import type { ToolExecutionResult, ToolExecutionContext } from './types'
+import type { ToolExecutionResult, ToolExecutionContext } from '@/shared/types'
 import type { PlanItem } from '../types'
 import { validatePath, isSensitivePath } from '@/renderer/utils/pathUtils'
 import { pathToLspUri } from '@/renderer/services/lspService'
