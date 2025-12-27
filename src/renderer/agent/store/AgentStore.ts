@@ -168,6 +168,7 @@ export const useAgentStore = create<AgentStore>()(
                 branches: state.branches,
                 activeBranchId: state.activeBranchId,
                 contextSummary: state.contextSummary,
+                messageCheckpoints: state.messageCheckpoints,
             }),
         }
     )

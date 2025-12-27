@@ -567,6 +567,12 @@ export default function ChatPanel() {
       return
     }
 
+    // 找到对应的用户消息内容
+    const userMessage = messages.find(m => m.id === messageId)
+    const userContent = userMessage && isUserMessage(userMessage) 
+      ? (typeof userMessage.content === 'string' ? userMessage.content : '')
+      : ''
+
     const { globalConfirm } = await import('../common/ConfirmDialog')
     const confirmed = await globalConfirm({
       title: language === 'zh' ? '恢复检查点' : 'Restore Checkpoint',
@@ -580,10 +586,14 @@ export default function ChatPanel() {
     if (result.success) {
       toast.success(`Restored ${result.restoredFiles.length} file(s)`)
       setActiveDiff(null)
+      // 把用户消息填充到输入框，方便重新发送
+      if (userContent) {
+        setInput(userContent)
+      }
     } else if (result.errors.length > 0) {
       toast.error(`Restore failed: ${result.errors[0]}`)
     }
-  }, [getCheckpointForMessage, restoreToCheckpoint, setActiveDiff, toast, language])
+  }, [getCheckpointForMessage, restoreToCheckpoint, setActiveDiff, toast, language, messages])
 
   // 渲染消息
   const renderMessage = useCallback((msg: ChatMessageType) => {

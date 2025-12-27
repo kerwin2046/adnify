@@ -32,7 +32,12 @@ export function registerSettingsHandlers(
 
   // 设置值
   ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
-    mainStore.set(key, value)
+    // electron-store 不允许设置 undefined，需要使用 delete
+    if (value === undefined) {
+      mainStore.delete(key as any)
+    } else {
+      mainStore.set(key, value)
+    }
 
     // 广播给所有窗口
     BrowserWindow.getAllWindows().forEach(win => {
