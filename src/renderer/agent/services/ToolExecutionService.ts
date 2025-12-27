@@ -215,7 +215,7 @@ export class ToolExecutionService {
       filePath: fullPath,
       toolCallId,
       toolName,
-      snapshot: { fsPath: fullPath, content: originalContent },
+      snapshot: { path: fullPath, content: originalContent },
       linesAdded: meta?.linesAdded || 0,
       linesRemoved: meta?.linesRemoved || 0,
     })

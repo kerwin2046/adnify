@@ -31,7 +31,7 @@ export type {
 
 export type {
     ToolCategory,
-    ToolMetadata,
+    ToolConfig,
     AgentRuntimeConfig,
 } from '@/shared/config/agentConfig'
 
@@ -228,9 +228,11 @@ export interface StreamState {
 
 /** 文件快照 */
 export interface FileSnapshot {
-    fsPath?: string
-    path?: string
+    /** 文件完整路径 */
+    path: string
+    /** 文件内容，null 表示文件不存在 */
     content: string | null
+    /** 快照时间戳 */
     timestamp?: number
 }
 

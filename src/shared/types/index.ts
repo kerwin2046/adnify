@@ -21,9 +21,11 @@ export interface FileItem {
 }
 
 export interface FileSnapshot {
-    fsPath: string
+    /** 文件完整路径 */
+    path: string
+    /** 文件内容，null 表示文件不存在 */
     content: string | null
-    path?: string
+    /** 快照时间戳 */
     timestamp?: number
 }
 

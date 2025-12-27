@@ -38,7 +38,7 @@ export interface CheckpointData {
     id: string
     type: 'user_message' | 'tool_edit'
     timestamp: number
-    snapshots: Record<string, { path?: string; fsPath?: string; content: string | null; timestamp?: number }>
+    snapshots: Record<string, { path: string; content: string | null; timestamp?: number }>
     description: string
     messageId?: string
   }>

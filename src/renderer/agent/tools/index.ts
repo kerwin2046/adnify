@@ -16,17 +16,24 @@ export type {
     ToolApprovalType,
 } from '@/shared/types'
 
-// 元数据类型 - 从 agentConfig 导出
-export type { ToolCategory, ToolMetadata } from '@/shared/config/agentConfig'
+// 工具配置 - 从统一配置中心导出
+export type { ToolCategory, ToolConfig } from '@/shared/config/tools'
+export {
+    TOOL_CONFIGS,
+    TOOL_DEFINITIONS,
+    TOOL_SCHEMAS,
+    TOOL_DISPLAY_NAMES,
+    getToolDefinitions,
+    getToolApprovalType,
+    getToolDisplayName,
+    getReadOnlyTools,
+    getWriteTools,
+    isParallelTool,
+    isWriteTool,
+} from '@/shared/config/tools'
 
 // 注册表
 export { toolRegistry } from './registry'
-
-// 定义
-export { TOOL_DEFINITIONS, TOOL_DISPLAY_NAMES, getToolDefinitions, getToolApprovalType, getToolDisplayName } from './definitions'
-
-// Schema
-export { TOOL_SCHEMAS } from './schemas'
 
 // 执行器
 export { toolExecutors, initializeTools } from './executors'

@@ -5,10 +5,12 @@
 
 import { z } from 'zod'
 import { logger } from '@utils/Logger'
-import { TOOL_SCHEMAS } from './schemas'
-import { TOOL_DEFINITIONS } from './definitions'
-import { DEFAULT_TOOL_METADATA } from '@/shared/config/agentConfig'
-import type { ToolCategory } from '@/shared/config/agentConfig'
+import {
+    TOOL_SCHEMAS,
+    TOOL_DEFINITIONS,
+    TOOL_CONFIGS,
+    type ToolCategory,
+} from '@/shared/config/tools'
 import type {
     ToolDefinition,
     ToolExecutionResult,
@@ -51,7 +53,7 @@ class ToolRegistry {
 
         const definition = TOOL_DEFINITIONS[name]
         const schema = TOOL_SCHEMAS[name]
-        const metadata = DEFAULT_TOOL_METADATA[name]
+        const config = TOOL_CONFIGS[name]
 
         if (!definition || !schema) {
             logger.agent.warn(`[ToolRegistry] Missing definition or schema for: ${name}`)
@@ -63,9 +65,9 @@ class ToolRegistry {
             definition,
             schema,
             executor,
-            category: metadata?.category || 'read',
-            approvalType: metadata?.approvalType || 'none',
-            parallel: metadata?.parallel ?? false,
+            category: config?.category || 'read',
+            approvalType: config?.approvalType || 'none',
+            parallel: config?.parallel ?? false,
             enabled: true,
         })
 

@@ -125,7 +125,6 @@ class CheckpointService {
 
       return {
         path: filePath,
-        fsPath: filePath,
         content,
         timestamp: Date.now(),
       }
