@@ -29,7 +29,9 @@ import type { ChatMessage, ContextItem } from '../types'
 // 上下文摘要状态
 interface ContextSummaryState {
     contextSummary: string | null
+    isCompacting: boolean
     setContextSummary: (summary: string | null) => void
+    setIsCompacting: (isCompacting: boolean) => void
 }
 
 export type AgentStore = ThreadSlice & MessageSlice & CheckpointSlice & PlanSlice & StreamSlice & BranchSlice & ContextSummaryState
@@ -129,10 +131,31 @@ export const useAgentStore = create<AgentStore>()(
             const branchSlice = createBranchSlice(...args)
 
             // 上下文摘要状态
-            const [set] = args
+            const [set, get] = args
             const contextSummaryState: ContextSummaryState = {
                 contextSummary: null,
-                setContextSummary: (summary) => set({ contextSummary: summary } as any),
+                isCompacting: false,
+                setContextSummary: (summary) => {
+                    const state = get() as any
+                    const currentThreadId = state.currentThreadId
+                    
+                    // 更新全局状态
+                    set({ contextSummary: summary } as any)
+                    
+                    // 同时更新当前线程的 contextSummary
+                    if (currentThreadId && state.threads[currentThreadId]) {
+                        set((s: any) => ({
+                            threads: {
+                                ...s.threads,
+                                [currentThreadId]: {
+                                    ...s.threads[currentThreadId],
+                                    contextSummary: summary,
+                                }
+                            }
+                        }))
+                    }
+                },
+                setIsCompacting: (isCompacting) => set({ isCompacting } as any),
             }
 
             // 重写 appendToAssistant 使用 StreamingBuffer
@@ -236,6 +259,7 @@ export const selectIsOnBranch = (state: AgentStore) => {
 }
 
 export const selectContextSummary = (state: AgentStore) => state.contextSummary
+export const selectIsCompacting = (state: AgentStore) => state.isCompacting
 
 // ===== StreamingBuffer 初始化 =====
 

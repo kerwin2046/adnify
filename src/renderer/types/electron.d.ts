@@ -220,6 +220,7 @@ export interface ElectronAPI {
 
   // LLM
   sendMessage: (params: LLMSendMessageParams) => Promise<void>
+  compactContext: (params: LLMSendMessageParams) => Promise<{ content: string; error?: string }>
   abortMessage: () => void
   invalidateProviders: () => Promise<void>
   invalidateProvider: (providerId: string) => Promise<void>

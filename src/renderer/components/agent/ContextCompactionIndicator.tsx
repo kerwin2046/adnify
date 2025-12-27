@@ -3,7 +3,7 @@
  * 显示当前对话的压缩状态和摘要信息
  */
 
-import React, { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { Minimize2, ChevronDown, ChevronUp, Trash2, RefreshCw } from 'lucide-react'
 import { useAgentStore, selectContextSummary, selectMessages, contextCompactionService } from '@/renderer/agent'
 import { Button } from '../ui'
@@ -135,17 +135,8 @@ export function CompactionProgressBar({
 }: {
   language?: 'zh' | 'en'
 }) {
-  const [isCompacting, setIsCompacting] = useState(false)
-
-  // 监听压缩状态
-  React.useEffect(() => {
-    const checkCompacting = () => {
-      setIsCompacting(contextCompactionService.isCompacting())
-    }
-    
-    const interval = setInterval(checkCompacting, 500)
-    return () => clearInterval(interval)
-  }, [])
+  // 使用 store 中的状态，而不是轮询
+  const isCompacting = useAgentStore(state => state.isCompacting)
 
   if (!isCompacting) return null
 

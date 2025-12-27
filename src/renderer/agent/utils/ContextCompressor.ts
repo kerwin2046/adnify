@@ -5,17 +5,22 @@
  */
 
 import { ChatMessage, isAssistantMessage, TextContent, ToolCallPart } from '../types'
+import { getAgentConfig } from './AgentConfig'
 
-// 压缩配置
+// 压缩配置（默认值，会被 AgentConfig 覆盖）
 export const COMPACT_CONFIG = {
     // 触发压缩的消息数阈值
     messageThreshold: 30,
-    // 触发压缩的字符数阈值
-    charThreshold: 40000,
+    // 触发压缩的字符数阈值（从 AgentConfig 获取）
+    get charThreshold() {
+        return getAgentConfig().contextCompressThreshold
+    },
     // 触发压缩的 Token 数阈值（估算）
     tokenThreshold: 10000,
-    // 压缩后保留的最近消息数
-    keepRecentMessages: 6,
+    // 压缩后保留的最近消息数（从 AgentConfig 获取，keepRecentTurns * 2 因为一轮 = user + assistant）
+    get keepRecentMessages() {
+        return getAgentConfig().keepRecentTurns * 2
+    },
     // 摘要最大字符数
     maxSummaryChars: 2000,
     // 保留的关键工具调用类型

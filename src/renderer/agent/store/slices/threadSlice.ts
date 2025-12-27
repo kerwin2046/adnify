@@ -36,6 +36,7 @@ export const createEmptyThread = (): ChatThread => ({
         currentCheckpointIdx: null,
         isStreaming: false,
     },
+    contextSummary: null,
 })
 
 // ===== Slice 创建器 =====
@@ -52,19 +53,64 @@ export const createThreadSlice: StateCreator<
 
     // 创建线程
     createThread: () => {
+        const currentState = get() as any
+        const currentThreadId = currentState.currentThreadId
+        
+        // 保存当前线程的压缩状态
+        if (currentThreadId && currentState.threads[currentThreadId]) {
+            const currentSummary = currentState.contextSummary
+            if (currentSummary) {
+                set(state => ({
+                    threads: {
+                        ...state.threads,
+                        [currentThreadId]: {
+                            ...state.threads[currentThreadId],
+                            contextSummary: currentSummary,
+                        }
+                    }
+                }))
+            }
+        }
+        
         const thread = createEmptyThread()
         set(state => ({
             threads: { ...state.threads, [thread.id]: thread },
             currentThreadId: thread.id,
-        }))
+            // 新线程没有压缩状态
+            contextSummary: null,
+            isCompacting: false,
+        } as any))
         return thread.id
     },
 
     // 切换线程
     switchThread: (threadId) => {
-        if (get().threads[threadId]) {
-            set({ currentThreadId: threadId })
+        const currentState = get() as any
+        const currentThreadId = currentState.currentThreadId
+        
+        if (!currentState.threads[threadId]) return
+        
+        // 保存当前线程的压缩状态
+        if (currentThreadId && currentState.threads[currentThreadId]) {
+            const currentSummary = currentState.contextSummary
+            set(state => ({
+                threads: {
+                    ...state.threads,
+                    [currentThreadId]: {
+                        ...state.threads[currentThreadId],
+                        contextSummary: currentSummary || null,
+                    }
+                }
+            }))
         }
+        
+        // 切换到目标线程，恢复其压缩状态
+        const targetThread = currentState.threads[threadId]
+        set({ 
+            currentThreadId: threadId,
+            contextSummary: targetThread.contextSummary || null,
+            isCompacting: false,
+        } as any)
     },
 
     // 删除线程

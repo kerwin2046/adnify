@@ -484,8 +484,13 @@ class AgentServiceClass {
           // 结束性能监控（失败）
           performanceMonitor.end(`llm:${config.model}`, false, { error: error.message })
 
-          // 记录错误到恢复服务
-          streamRecoveryService.recordError(error.message)
+          // 如果是用户中断，直接结束会话，不保留恢复点
+          if (error.code === 'ABORTED') {
+            streamRecoveryService.endSession(true)
+          } else {
+            // 记录错误到恢复服务（保留恢复点）
+            streamRecoveryService.recordError(error.message)
+          }
 
           closeReasoningIfNeeded(this.streamState, this.currentAssistantId)
           cleanupListeners()

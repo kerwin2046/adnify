@@ -38,7 +38,6 @@ import { useToast } from '@/renderer/components/common/ToastProvider'
 import { BranchSelector } from './BranchManager'
 import BranchManager from './BranchManager'
 import StreamRecoveryBanner from './StreamRecoveryBanner'
-import { CompactionProgressBar } from './ContextCompactionIndicator'
 
 export default function ChatPanel() {
   const {
@@ -807,9 +806,6 @@ export default function ChatPanel() {
         <div className="flex-1 min-h-0 relative z-0 flex flex-col pt-12">
           {/* Stream Recovery Banner */}
           <StreamRecoveryBanner language={language} />
-          
-          {/* Compaction Progress */}
-          <CompactionProgressBar language={language} />
           
           {/* API Key Warning */}
           {!hasApiKey && (

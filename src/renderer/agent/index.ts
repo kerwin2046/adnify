@@ -18,6 +18,7 @@ export {
     selectActiveBranch,
     selectIsOnBranch,
     selectContextSummary,
+    selectIsCompacting,
 } from './store/AgentStore'
 
 // 核心服务

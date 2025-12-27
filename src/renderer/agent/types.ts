@@ -209,6 +209,8 @@ export interface ChatThread {
     messages: ChatMessage[]
     contextItems: ContextItem[]
     state: ThreadState
+    /** 上下文压缩摘要（每个线程独立） */
+    contextSummary?: string | null
 }
 
 /** 流阶段 */

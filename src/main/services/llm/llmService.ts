@@ -29,14 +29,21 @@ const CACHE_TTL_MS = 30 * 60 * 1000
 const CACHE_MAX_SIZE = 10
 const CACHE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000
 
+interface LLMServiceOptions {
+  /** 静默模式：不发送事件到渲染进程 */
+  silent?: boolean
+}
+
 export class LLMService {
   private window: BrowserWindow
   private providerCache: Map<string, ProviderCacheEntry> = new Map()
   private currentAbortController: AbortController | null = null
   private cleanupTimer: NodeJS.Timeout | null = null
+  private silent: boolean
 
-  constructor(window: BrowserWindow) {
+  constructor(window: BrowserWindow, options?: LLMServiceOptions) {
     this.window = window
+    this.silent = options?.silent ?? false
     this.startCacheCleanup()
   }
 
@@ -265,6 +272,69 @@ export class LLMService {
     if (this.currentAbortController) {
       this.currentAbortController.abort()
       this.currentAbortController = null
+    }
+  }
+
+  /**
+   * 同步发送消息（不使用流式，直接返回结果）
+   * 用于上下文压缩等后台任务
+   */
+  async sendMessageSync(params: {
+    config: LLMConfig
+    messages: LLMMessage[]
+    tools?: ToolDefinition[]
+    systemPrompt?: string
+  }): Promise<{ content: string; error?: string }> {
+    const { config, messages, tools, systemPrompt } = params
+
+    logger.system.info('[LLMService] sendMessageSync', {
+      provider: config.provider,
+      model: config.model,
+      messageCount: messages.length,
+    })
+
+    const abortController = new AbortController()
+    let content = ''
+
+    try {
+      const provider = this.getProvider(config)
+
+      await provider.chat({
+        model: config.model,
+        messages,
+        tools,
+        systemPrompt,
+        maxTokens: config.maxTokens || 1000,
+        temperature: config.temperature ?? 0.3,
+        topP: config.topP,
+        signal: abortController.signal,
+        adapterConfig: config.adapterConfig,
+
+        onStream: (chunk) => {
+          if (chunk.type === 'text' && chunk.content) {
+            content += chunk.content
+          }
+        },
+
+        onToolCall: () => {
+          // 压缩任务不需要工具调用
+        },
+
+        onComplete: () => {
+          // 完成
+        },
+
+        onError: (error) => {
+          logger.system.error('[LLMService] Sync error:', error)
+          throw new Error(error.message)
+        },
+      })
+
+      return { content }
+    } catch (error: unknown) {
+      const err = error as { message?: string }
+      logger.system.error('[LLMService] sendMessageSync error:', error)
+      return { content: '', error: err.message || 'Unknown error' }
     }
   }
 

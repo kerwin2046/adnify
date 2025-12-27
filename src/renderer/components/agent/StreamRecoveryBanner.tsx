@@ -26,7 +26,8 @@ export default function StreamRecoveryBanner({
 
   // 检查可恢复的会话
   useEffect(() => {
-    // 清理旧的存储数据，避免误报
+    // 清理旧的存储数据和内存数据，避免误报
+    streamRecoveryService.clearAll()
     try {
       for (let i = sessionStorage.length - 1; i >= 0; i--) {
         const key = sessionStorage.key(i)
@@ -46,12 +47,15 @@ export default function StreamRecoveryBanner({
       setRecoverableSessions(recentSessions)
     }
 
-    // 初始检查
-    checkSessions()
+    // 初始检查延迟执行，避免刚启动就显示
+    const initialTimeout = setTimeout(checkSessions, 3000)
 
     // 定期检查（降低频率）
     const interval = setInterval(checkSessions, 10000)
-    return () => clearInterval(interval)
+    return () => {
+      clearTimeout(initialTimeout)
+      clearInterval(interval)
+    }
   }, [dismissed])
 
   const handleRecover = useCallback(async (recoveryId: string) => {

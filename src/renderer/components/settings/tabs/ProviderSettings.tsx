@@ -60,7 +60,14 @@ function convertCustomConfigToAdapterConfig(custom: CustomProviderConfig): LLMAd
  */
 function adapterConfigToAdvanced(config: LLMAdapterConfig | undefined, isCustom: boolean): AdvancedConfig | undefined {
     if (!config) return undefined
-    if (!isCustom) return undefined
+    // 对于内置 Provider，只有当有自定义配置时才返回
+    // 对于自定义 Provider，总是返回配置
+    if (!isCustom) {
+        // 内置 Provider：检查是否有非默认的 bodyTemplate
+        if (!config.request?.bodyTemplate || Object.keys(config.request.bodyTemplate).length === 0) {
+            return undefined
+        }
+    }
     return {
         request: {
             endpoint: config.request?.endpoint,
@@ -259,9 +266,9 @@ export function ProviderSettings({
             advanced: advanced,
         }
 
-        // 如果是自定义 Provider，同时更新 adapterConfig
-        if (isCustomSelected && advanced) {
-            const baseConfig = localConfig.adapterConfig || getAdapterConfig('openai')
+        // 同时更新 adapterConfig（无论是内置还是自定义 Provider）
+        if (advanced) {
+            const baseConfig = localConfig.adapterConfig || getAdapterConfig(localConfig.provider) || getAdapterConfig('openai')
             const updatedAdapterConfig: LLMAdapterConfig = {
                 ...baseConfig,
                 request: {
@@ -279,6 +286,11 @@ export function ProviderSettings({
             }
             newConfigs[localConfig.provider].adapterConfig = updatedAdapterConfig
             setLocalConfig({ ...localConfig, adapterConfig: updatedAdapterConfig })
+        } else {
+            // 如果 advanced 被清空，恢复默认的 adapterConfig
+            const defaultConfig = getAdapterConfig(localConfig.provider)
+            newConfigs[localConfig.provider].adapterConfig = defaultConfig
+            setLocalConfig({ ...localConfig, adapterConfig: defaultConfig })
         }
 
         setLocalProviderConfigs(newConfigs)

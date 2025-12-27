@@ -17,9 +17,109 @@ import {
   calculateSavings,
 } from '../utils/ContextCompressor'
 import { contextCompactionService } from '../services/ContextCompactionService'
+import { ChatMessage, isAssistantMessage, isUserMessage, ToolCallPart, TextContent } from '../types'
 
 // 从 ContextBuilder 导入已有的函数
 export { buildContextContent, buildUserContent, calculateContextStats } from './ContextBuilder'
+
+/**
+ * 生成简单摘要（不调用 LLM）
+ * 提取关键信息：用户请求、文件操作、重要决策
+ */
+function generateSimpleSummary(messages: ChatMessage[]): string {
+  const userRequests: string[] = []
+  const fileOperations: string[] = []
+  const toolsUsed = new Set<string>()
+
+  for (const msg of messages) {
+    // 提取用户请求
+    if (isUserMessage(msg)) {
+      const content = typeof msg.content === 'string' 
+        ? msg.content 
+        : (msg.content as TextContent[])?.find(p => p.type === 'text')?.text || ''
+      if (content.length > 0) {
+        // 截取前 200 字符
+        const truncated = content.length > 200 ? content.slice(0, 200) + '...' : content
+        userRequests.push(truncated)
+      }
+    }
+
+    // 提取工具调用
+    if (isAssistantMessage(msg) && msg.parts) {
+      for (const part of msg.parts) {
+        if (part.type === 'tool_call') {
+          const toolCall = (part as ToolCallPart).toolCall
+          toolsUsed.add(toolCall.name)
+          
+          // 记录文件操作
+          if (['edit_file', 'write_file', 'create_file_or_folder', 'delete_file_or_folder', 'read_file'].includes(toolCall.name)) {
+            const args = toolCall.arguments as any
+            const path = args?.path || args?.file_path || args?.target_file || ''
+            if (path) {
+              fileOperations.push(`${toolCall.name}: ${path}`)
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 构建摘要
+  const parts: string[] = []
+  
+  if (userRequests.length > 0) {
+    parts.push(`## User Requests (${userRequests.length} total)\n${userRequests.slice(0, 5).map((r, i) => `${i + 1}. ${r}`).join('\n')}`)
+  }
+  
+  if (fileOperations.length > 0) {
+    const uniqueOps = [...new Set(fileOperations)].slice(0, 20)
+    parts.push(`## File Operations\n${uniqueOps.join('\n')}`)
+  }
+  
+  if (toolsUsed.size > 0) {
+    parts.push(`## Tools Used\n${[...toolsUsed].join(', ')}`)
+  }
+
+  return parts.join('\n\n') || 'Previous conversation context (details compacted)'
+}
+
+/**
+ * 智能截断消息，保持 tool_call 和 tool_result 的配对完整
+ */
+function smartTruncateMessages<T extends { role: string; id?: string; toolCallId?: string }>(
+  messages: T[],
+  maxMessages: number
+): T[] {
+  if (messages.length <= maxMessages) return messages
+
+  // 从后往前找到一个安全的截断点
+  let cutIndex = messages.length - maxMessages
+  
+  // 收集截断点之后所有消息中引用的 toolCallId
+  const referencedToolCallIds = new Set<string>()
+  for (let i = cutIndex; i < messages.length; i++) {
+    const msg = messages[i]
+    if (msg.role === 'tool' && (msg as any).toolCallId) {
+      referencedToolCallIds.add((msg as any).toolCallId)
+    }
+  }
+  
+  // 向前扩展，包含所有被引用的 tool_call 的 assistant 消息
+  for (let i = cutIndex - 1; i >= 0; i--) {
+    const msg = messages[i]
+    if (msg.role === 'assistant') {
+      const parts = (msg as any).parts || []
+      const hasReferencedToolCall = parts.some((p: any) => 
+        p.type === 'tool_call' && referencedToolCallIds.has(p.toolCall?.id)
+      )
+      if (hasReferencedToolCall) {
+        cutIndex = i
+      }
+    }
+  }
+  
+  return messages.slice(cutIndex)
+}
 
 /**
  * 构建发送给 LLM 的消息列表
@@ -46,42 +146,78 @@ export async function buildLLMMessages(
 
   // 检查是否需要压缩上下文
   if (shouldCompactContext(filteredMessages)) {
-    logger.agent.info('[MessageBuilder] Context exceeds threshold, checking for compaction...')
+    logger.agent.info('[MessageBuilder] Context exceeds threshold, compacting...')
 
-    // 优先使用已有的摘要
+    const { recentMessages, messagesToCompact } = prepareMessagesForCompact(filteredMessages as any)
+    
+    // 检查是否有已有的摘要
     const existingSummary = store.contextSummary || contextCompactionService.getSummary()
     
-    if (existingSummary) {
+    if (existingSummary && messagesToCompact.length > 0) {
+      // 有摘要，但还有新的消息需要压缩
+      // 将旧摘要和新消息一起重新压缩
       compactedSummary = existingSummary
-      const { recentMessages, messagesToCompact } = prepareMessagesForCompact(filteredMessages as any)
       
       // 计算并记录压缩节省的 Token 数
       const savings = calculateSavings(messagesToCompact as any, existingSummary)
       logger.agent.info(`[MessageBuilder] Using existing summary: saved ${savings.savedTokens} tokens (${savings.savedPercent}%)`)
       
       filteredMessages = recentMessages as NonCheckpointMessage[]
-    } else {
-      // 尝试生成新的摘要（异步，不阻塞当前请求）
-      contextCompactionService.requestCompaction(filteredMessages as any).then(summary => {
-        if (summary) {
-          store.setContextSummary(summary)
-          logger.agent.info('[MessageBuilder] New summary generated and saved')
+      
+      // 如果待压缩消息较多，异步更新摘要（包含新内容）
+      if (messagesToCompact.length >= 10) {
+        logger.agent.info(`[MessageBuilder] ${messagesToCompact.length} new messages to compact, requesting LLM update...`)
+        contextCompactionService.requestCompaction(messagesToCompact as any).then(llmSummary => {
+          if (llmSummary && llmSummary.length > 100) {
+            // 合并旧摘要和新摘要
+            const mergedSummary = `${existingSummary}\n\n--- Updated ---\n\n${llmSummary}`
+            const truncatedSummary = mergedSummary.length > 3000 
+              ? llmSummary // 如果合并后太长，只用新摘要
+              : mergedSummary
+            store.setContextSummary(truncatedSummary)
+            logger.agent.info('[MessageBuilder] Summary updated with new content')
+          }
+        }).catch(err => {
+          logger.agent.warn('[MessageBuilder] Failed to update summary:', err)
+        })
+      }
+    } else if (existingSummary) {
+      // 有摘要，没有新消息需要压缩
+      compactedSummary = existingSummary
+      filteredMessages = recentMessages as NonCheckpointMessage[]
+    } else if (messagesToCompact.length > 0) {
+      // 没有摘要，需要首次压缩
+      // 先生成简单摘要（立即可用）
+      const simpleSummary = generateSimpleSummary(messagesToCompact as any)
+      compactedSummary = simpleSummary
+      store.setContextSummary(simpleSummary)
+      
+      logger.agent.info(`[MessageBuilder] Generated simple summary, compacted ${messagesToCompact.length} messages`)
+      filteredMessages = recentMessages as NonCheckpointMessage[]
+      
+      // 异步请求 LLM 生成更好的摘要（下次请求时使用）
+      contextCompactionService.requestCompaction(messagesToCompact as any).then(llmSummary => {
+        if (llmSummary && llmSummary.length > 100) {
+          store.setContextSummary(llmSummary)
+          logger.agent.info('[MessageBuilder] LLM summary generated and saved for next request')
         }
       }).catch(err => {
-        logger.agent.warn('[MessageBuilder] Failed to generate summary:', err)
+        logger.agent.warn('[MessageBuilder] Failed to generate LLM summary:', err)
       })
-      
-      // 当前请求使用简单截断
-      filteredMessages = filteredMessages.slice(-llmConfig.maxHistoryMessages)
+    } else {
+      // 当前请求使用智能截断（保持 tool_call/tool_result 配对）
+      filteredMessages = smartTruncateMessages(filteredMessages, llmConfig.maxHistoryMessages)
     }
   } else {
-    filteredMessages = filteredMessages.slice(-llmConfig.maxHistoryMessages)
+    filteredMessages = smartTruncateMessages(filteredMessages, llmConfig.maxHistoryMessages)
   }
 
   // 构建系统提示
   const effectiveSystemPrompt = compactedSummary
     ? `${systemPrompt}\n\n${createCompactedSystemMessage(compactedSummary)}`
     : systemPrompt
+
+  logger.agent.info(`[MessageBuilder] System prompt size: ${effectiveSystemPrompt.length} chars`)
 
   // 转换为 OpenAI 格式
   const openaiMessages = buildOpenAIMessages(filteredMessages as any, effectiveSystemPrompt)
@@ -105,11 +241,30 @@ export async function buildLLMMessages(
     logger.agent.warn('[MessageBuilder] Message validation warning:', validation.error)
   }
 
+  // 调试：检查消息内容是否有效
+  for (let i = 0; i < openaiMessages.length; i++) {
+    const msg = openaiMessages[i]
+    if (msg.role === 'user' || msg.role === 'assistant') {
+      if (msg.content === undefined) {
+        logger.agent.error(`[MessageBuilder] Message ${i} has undefined content:`, msg)
+      } else if (msg.content === null && msg.role === 'user') {
+        logger.agent.error(`[MessageBuilder] User message ${i} has null content:`, msg)
+      } else if (Array.isArray(msg.content)) {
+        for (let j = 0; j < msg.content.length; j++) {
+          const part = msg.content[j]
+          if (part.type === 'text' && (part.text === undefined || part.text === null)) {
+            logger.agent.error(`[MessageBuilder] Message ${i} part ${j} has invalid text:`, part)
+          }
+        }
+      }
+    }
+  }
+
   return openaiMessages
 }
 
 /**
- * 压缩上下文（移除旧的工具结果）
+ * 压缩上下文（移除旧的工具结果和截断大内容）
  */
 export async function compressContext(
   messages: OpenAIMessage[],
@@ -121,9 +276,17 @@ export async function compressContext(
     if (typeof msg.content === 'string') {
       totalChars += msg.content.length
     } else if (Array.isArray(msg.content)) {
-      totalChars += 1000 // 估算多模态内容
+      for (const part of msg.content) {
+        if (part.type === 'text') {
+          totalChars += part.text?.length || 0
+        } else {
+          totalChars += 1000 // 估算图片等内容
+        }
+      }
     }
   }
+
+  logger.agent.info(`[MessageBuilder] Context check: ${totalChars} chars, limit ${maxChars}`)
 
   if (totalChars <= maxChars) return
 
@@ -158,5 +321,34 @@ export async function compressContext(
         msg.content = msg.content.slice(0, 200) + '\n...[Content truncated]...\n' + msg.content.slice(-200)
       }
     }
+    
+    // 截断旧的用户消息中的大内容（保留最近的完整）
+    if (msg.role === 'user') {
+      if (typeof msg.content === 'string' && msg.content.length > 2000) {
+        msg.content = msg.content.slice(0, 500) + '\n...[Content truncated to save context]...\n' + msg.content.slice(-500)
+      } else if (Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if (part.type === 'text' && part.text && part.text.length > 2000) {
+            part.text = part.text.slice(0, 500) + '\n...[Content truncated to save context]...\n' + part.text.slice(-500)
+          }
+        }
+      }
+    }
   }
+  
+  // 重新计算压缩后的大小
+  let newTotalChars = 0
+  for (const msg of messages) {
+    if (typeof msg.content === 'string') {
+      newTotalChars += msg.content.length
+    } else if (Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (part.type === 'text') {
+          newTotalChars += part.text?.length || 0
+        }
+      }
+    }
+  }
+  
+  logger.agent.info(`[MessageBuilder] Compressed: ${totalChars} -> ${newTotalChars} chars (saved ${Math.round((1 - newTotalChars/totalChars) * 100)}%)`)
 }

@@ -73,16 +73,17 @@ export default function SettingsModal() {
         setAgentConfig(localAgentConfig)
         setAiInstructions(localAiInstructions)
 
-        // 更新 provider configs
+        // 更新 provider configs - 从 localProviderConfigs 获取 advanced 和 adapterConfig
+        const currentProviderLocalConfig = localProviderConfigs[localConfig.provider] || {}
         const updatedProviderConfigs = {
             ...localProviderConfigs,
             [localConfig.provider]: {
-                ...localProviderConfigs[localConfig.provider],
+                ...currentProviderLocalConfig,
                 apiKey: localConfig.apiKey,
                 baseUrl: localConfig.baseUrl,
                 timeout: localConfig.timeout,
-                adapterConfig: localConfig.adapterConfig,
-                advanced: localConfig.advanced,
+                adapterConfig: currentProviderLocalConfig.adapterConfig || localConfig.adapterConfig,
+                advanced: currentProviderLocalConfig.advanced,
                 model: localConfig.model,
             }
         }

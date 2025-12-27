@@ -94,6 +94,7 @@ class ContextCompactionServiceClass {
     }
 
     this.state.isCompacting = true
+    this.updateStoreCompactingState(true)
     logger.agent.info(`[ContextCompaction] Starting compaction of ${messagesToCompact.length} messages`)
 
     try {
@@ -127,6 +128,17 @@ class ContextCompactionServiceClass {
       return null
     } finally {
       this.state.isCompacting = false
+      this.updateStoreCompactingState(false)
+    }
+  }
+
+  /**
+   * 更新 store 中的压缩状态
+   */
+  private updateStoreCompactingState(isCompacting: boolean): void {
+    const store = useAgentStore.getState() as any
+    if (store.setIsCompacting) {
+      store.setIsCompacting(isCompacting)
     }
   }
 
@@ -134,54 +146,18 @@ class ContextCompactionServiceClass {
    * 调用 LLM 生成摘要
    */
   private async callLLMForSummary(prompt: string): Promise<string | null> {
-    return new Promise((resolve) => {
-      let content = ''
-      const unsubscribers: (() => void)[] = []
-
-      const cleanup = () => {
-        unsubscribers.forEach(unsub => unsub())
-      }
-
-      // 监听流式响应
-      unsubscribers.push(
-        window.electronAPI.onLLMStream((chunk) => {
-          if (chunk.type === 'text' && chunk.content) {
-            content += chunk.content
-          }
-        })
-      )
-
-      // 监听完成
-      unsubscribers.push(
-        window.electronAPI.onLLMDone(() => {
-          cleanup()
-          // 截断到最大长度
-          const truncated = content.length > COMPACT_CONFIG.maxSummaryChars
-            ? content.slice(0, COMPACT_CONFIG.maxSummaryChars) + '...'
-            : content
-          resolve(truncated)
-        })
-      )
-
-      // 监听错误
-      unsubscribers.push(
-        window.electronAPI.onLLMError((error) => {
-          cleanup()
-          logger.agent.error('[ContextCompaction] LLM error:', error)
-          resolve(null)
-        })
-      )
-
-      // 获取当前配置
-      const { llmConfig } = (window as any).__STORE__?.getState?.() || {}
+    try {
+      // 从主 store 获取 LLM 配置
+      const { useStore } = await import('@store')
+      const llmConfig = useStore.getState().llmConfig
+      
       if (!llmConfig?.apiKey) {
-        cleanup()
-        resolve(null)
-        return
+        logger.agent.warn('[ContextCompaction] No API key configured')
+        return null
       }
 
-      // 发送压缩请求（使用较小的 token 限制）
-      window.electronAPI.sendMessage({
+      // 使用独立的压缩 API（不与主对话冲突）
+      const result = await window.electronAPI.compactContext({
         config: {
           ...llmConfig,
           maxTokens: 1000, // 摘要不需要太长
@@ -191,13 +167,25 @@ class ContextCompactionServiceClass {
           { role: 'user', content: prompt }
         ],
         tools: [], // 不需要工具
-        systemPrompt: 'You are a helpful assistant that summarizes conversations concisely.',
-      }).catch((err) => {
-        cleanup()
-        logger.agent.error('[ContextCompaction] Send error:', err)
-        resolve(null)
+        systemPrompt: 'You are a helpful assistant that summarizes conversations concisely. Output only the summary, no extra text.',
       })
-    })
+
+      if (result.error) {
+        logger.agent.error('[ContextCompaction] LLM error:', result.error)
+        return null
+      }
+
+      // 截断到最大长度
+      const content = result.content || ''
+      const truncated = content.length > COMPACT_CONFIG.maxSummaryChars
+        ? content.slice(0, COMPACT_CONFIG.maxSummaryChars) + '...'
+        : content
+
+      return truncated || null
+    } catch (error) {
+      logger.agent.error('[ContextCompaction] callLLMForSummary error:', error)
+      return null
+    }
   }
 
   /**

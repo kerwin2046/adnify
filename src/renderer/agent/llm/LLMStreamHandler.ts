@@ -246,7 +246,17 @@ export function handleToolCallEnd(
   )
 
   try {
-    const args = JSON.parse(state.currentToolCall.argsString || '{}')
+    // 清理可能的多余字符（有时流式传输会有额外内容）
+    let argsString = state.currentToolCall.argsString || '{}'
+    
+    // 找到第一个 { 和最后一个 } 的位置
+    const firstBrace = argsString.indexOf('{')
+    const lastBrace = argsString.lastIndexOf('}')
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      argsString = argsString.slice(firstBrace, lastBrace + 1)
+    }
+    
+    const args = JSON.parse(argsString)
     state.toolCalls.push({
       id: state.currentToolCall.id,
       name: state.currentToolCall.name,
@@ -260,6 +270,7 @@ export function handleToolCallEnd(
     }
   } catch (e) {
     logger.agent.error(`[Agent] Failed to parse tool args for ${state.currentToolCall.name}:`, e)
+    logger.agent.debug(`[Agent] Raw args string: ${state.currentToolCall.argsString.slice(0, 200)}...`)
     state.toolCalls.push({
       id: state.currentToolCall.id,
       name: state.currentToolCall.name,

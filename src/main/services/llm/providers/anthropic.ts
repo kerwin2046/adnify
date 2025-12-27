@@ -61,7 +61,13 @@ export class AnthropicProvider extends BaseProvider {
     // 如果使用 Bearer token，添加 Authorization header
     if (this.useBearer) {
       clientOptions.defaultHeaders = {
-        'Authorization': `Bearer ${this.apiKey}`,
+        Authorization: `Bearer ${this.apiKey}`,
+        'anthropic-beta': 'interleaved-thinking-2025-05-14',
+      }
+    } else {
+      // 即使不用 Bearer，也需要 beta header 来支持 thinking
+      clientOptions.defaultHeaders = {
+        'anthropic-beta': 'interleaved-thinking-2025-05-14',
       }
     }
     
@@ -72,9 +78,20 @@ export class AnthropicProvider extends BaseProvider {
     content: MessageContent
   ): string | Array<Anthropic.TextBlockParam | Anthropic.ImageBlockParam> {
     if (typeof content === 'string') return content
+    
+    // 处理空数组
+    if (!content || content.length === 0) {
+      logger.system.warn('[Anthropic] Empty content array, returning empty string')
+      return ''
+    }
 
     return content.map((part) => {
       if (part.type === 'text') {
+        // 确保 text 不是 undefined 或 null
+        if (part.text === undefined || part.text === null) {
+          logger.system.warn('[Anthropic] Text part has invalid text:', part)
+          return { type: 'text', text: '' }
+        }
         return { type: 'text', text: part.text }
       } else {
         if (part.source.type === 'url') {
@@ -129,21 +146,99 @@ export class AnthropicProvider extends BaseProvider {
       this.log('info', 'Chat', { model, messageCount: messages.length })
 
       const anthropicMessages: Anthropic.MessageParam[] = []
+      let extractedSystemPrompt = systemPrompt || ''
 
       for (const msg of messages) {
+        // 提取 system 消息作为 system prompt
+        if (msg.role === 'system') {
+          const content = typeof msg.content === 'string' 
+            ? msg.content 
+            : Array.isArray(msg.content) 
+              ? msg.content.map(p => p.type === 'text' ? p.text : '').join('')
+              : ''
+          if (content) {
+            extractedSystemPrompt = extractedSystemPrompt ? `${extractedSystemPrompt}\n\n${content}` : content
+          }
+          continue
+        }
+        
         if (msg.role === 'tool') {
+          // 获取 tool_call_id（可能在 toolCallId 或 tool_call_id 字段）
+          const toolCallId = msg.toolCallId || (msg as any).tool_call_id
+          if (!toolCallId) {
+            continue
+          }
           anthropicMessages.push({
             role: 'user',
             content: [
               {
                 type: 'tool_result',
-                tool_use_id: msg.toolCallId!,
+                tool_use_id: toolCallId,
                 content:
                   typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content),
               },
             ],
           })
+        } else if (msg.role === 'assistant' && (msg as any).tool_calls?.length > 0) {
+          // OpenAI 格式的 tool_calls
+          const toolCalls = (msg as any).tool_calls as Array<{
+            id: string
+            type: string
+            function: { name: string; arguments: string }
+          }>
+          
+          const contentBlocks: Anthropic.ContentBlockParam[] = []
+          
+          // 如果有文本内容，先添加
+          if (msg.content) {
+            const textContent = typeof msg.content === 'string' ? msg.content : ''
+            if (textContent) {
+              contentBlocks.push({ type: 'text', text: textContent })
+            }
+          }
+          
+          // 添加 tool_use blocks
+          for (const tc of toolCalls) {
+            let input: Record<string, unknown> = {}
+            try {
+              let argsStr = tc.function.arguments || '{}'
+              // 清理可能的多余字符
+              const firstBrace = argsStr.indexOf('{')
+              const lastBrace = argsStr.lastIndexOf('}')
+              if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                argsStr = argsStr.slice(firstBrace, lastBrace + 1)
+              }
+              input = JSON.parse(argsStr)
+            } catch (e) {
+              logger.system.warn('[Anthropic] Failed to parse tool arguments:', e)
+            }
+            contentBlocks.push({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.function.name,
+              input,
+            })
+          }
+          
+          anthropicMessages.push({
+            role: 'assistant',
+            content: contentBlocks,
+          })
         } else if (msg.role === 'assistant' && msg.toolName) {
+          // 旧格式：单个工具调用
+          let input: Record<string, unknown> = {}
+          try {
+            const contentStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
+            let argsStr = contentStr || '{}'
+            const firstBrace = argsStr.indexOf('{')
+            const lastBrace = argsStr.lastIndexOf('}')
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+              argsStr = argsStr.slice(firstBrace, lastBrace + 1)
+            }
+            input = JSON.parse(argsStr)
+          } catch (e) {
+            logger.system.warn('[Anthropic] Failed to parse tool content:', e)
+          }
           anthropicMessages.push({
             role: 'assistant',
             content: [
@@ -151,13 +246,15 @@ export class AnthropicProvider extends BaseProvider {
                 type: 'tool_use',
                 id: msg.toolCallId!,
                 name: msg.toolName,
-                input: JSON.parse(
-                  typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content)
-                ),
+                input,
               },
             ],
           })
         } else if (msg.role === 'user' || msg.role === 'assistant') {
+          // 跳过内容为空的消息
+          if (msg.content === undefined || msg.content === null) {
+            continue
+          }
           anthropicMessages.push({
             role: msg.role,
             content: this.convertContent(msg.content),
@@ -172,7 +269,7 @@ export class AnthropicProvider extends BaseProvider {
         messages: anthropicMessages,
       }
 
-      // 添加 LLM 参数
+      // 添加 LLM 参数（稍后会根据 thinking 模式调整）
       if (params.temperature !== undefined) {
         requestParams.temperature = params.temperature
       }
@@ -180,8 +277,8 @@ export class AnthropicProvider extends BaseProvider {
         requestParams.top_p = params.topP
       }
 
-      if (systemPrompt) {
-        requestParams.system = systemPrompt
+      if (extractedSystemPrompt) {
+        requestParams.system = extractedSystemPrompt
       }
 
       const convertedTools = this.convertTools(tools, adapterConfig?.id)
@@ -198,6 +295,12 @@ export class AnthropicProvider extends BaseProvider {
           requestParams[key] = value
         }
       }
+      
+      // 如果启用了 thinking 模式，必须移除 temperature 和 top_p（Anthropic API 要求）
+      if (requestParams.thinking) {
+        delete requestParams.temperature
+        delete requestParams.top_p
+      }
 
       const stream = this.client.messages.stream(
         requestParams as unknown as Anthropic.MessageCreateParamsStreaming,
@@ -212,7 +315,7 @@ export class AnthropicProvider extends BaseProvider {
         onStream({ type: 'text', content: text })
       })
 
-      // 支持 Anthropic 的思考块
+      // 支持 Anthropic 的原生思考块
       stream.on('streamEvent', (event) => {
         if (event.type === 'content_block_delta' && event.delta.type === 'thinking_delta') {
           const thinking = (event.delta as any).thinking

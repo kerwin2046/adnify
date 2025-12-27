@@ -149,8 +149,8 @@ function AppContent() {
           }
         }
 
-        // 注册设置同步监听器
-        window.electronAPI.onSettingsChanged(({ key, value }) => {
+        // 注册设置同步监听器（返回清理函数供 useEffect 使用）
+        const unsubscribeSettings = window.electronAPI.onSettingsChanged(({ key, value }) => {
           logger.system.info(`[App] Setting changed in another window: ${key}`, value)
           if (key === 'llmConfig') setLLMConfig(value as any)
           if (key === 'language') setLanguage(value as any)
@@ -161,6 +161,8 @@ function AppContent() {
             setTheme(value as any)
           }
         })
+        // 保存清理函数到 ref 或返回
+        ;(window as any).__settingsUnsubscribe = unsubscribeSettings
 
         updateLoaderStatus('Ready!')
         // 短暂延迟后移除 loader 并通知主进程显示窗口
@@ -187,6 +189,15 @@ function AppContent() {
       }
     }
     loadSettings()
+    
+    // 清理函数
+    return () => {
+      const unsubscribe = (window as any).__settingsUnsubscribe
+      if (unsubscribe) {
+        unsubscribe()
+        delete (window as any).__settingsUnsubscribe
+      }
+    }
   }, [setLLMConfig, setLanguage, setAutoApprove, setWorkspace, setFiles, updateLoaderStatus, removeInitialLoader, setPromptTemplateId])
 
   // 初始化工作区状态同步（自动保存打开的文件等）

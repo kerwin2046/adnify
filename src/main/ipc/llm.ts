@@ -9,6 +9,8 @@ import { LLMService } from '../services/llm'
 
 // 按窗口 webContents.id 管理独立的 LLM 服务
 const llmServices = new Map<number, LLMService>()
+// 独立的压缩服务（不与主对话冲突）
+const compactionServices = new Map<number, LLMService>()
 
 export function registerLLMHandlers(_getMainWindow: () => BrowserWindow | null) {
   // 发送消息
@@ -30,6 +32,30 @@ export function registerLLMHandlers(_getMainWindow: () => BrowserWindow | null) 
       await llmServices.get(webContentsId)!.sendMessage(params)
     } catch (error: any) {
       throw error
+    }
+  })
+
+  // 独立的压缩请求（不使用流式，直接返回结果）
+  ipcMain.handle('llm:compactContext', async (event, params) => {
+    const webContentsId = event.sender.id
+    const window = BrowserWindow.fromWebContents(event.sender)
+
+    if (!window) {
+      throw new Error('Window not found for compaction request')
+    }
+
+    // 使用独立的压缩服务
+    if (!compactionServices.has(webContentsId)) {
+      logger.ipc.info('[LLMService] Creating compaction service for window:', webContentsId)
+      compactionServices.set(webContentsId, new LLMService(window, { silent: true }))
+    }
+
+    try {
+      const result = await compactionServices.get(webContentsId)!.sendMessageSync(params)
+      return result
+    } catch (error: any) {
+      logger.ipc.error('[LLMService] Compaction error:', error)
+      return { error: error.message }
     }
   })
 

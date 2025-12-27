@@ -44,17 +44,27 @@ export function AdapterOverridesEditor({
         argsIsObject: defaultConfig?.response?.argsIsObject || false,
     }
 
-    // 初始化 JSON 文本（优先显示 overrides，否则显示默认配置）
+    // 追踪上一次的 Provider ID，用于检测 Provider 切换
+    const [lastProviderId, setLastProviderId] = useState<string | undefined>(undefined)
+    
+    // 初始化 JSON 文本
     useEffect(() => {
-        if (overrides?.request?.bodyTemplate) {
-            setBodyJsonText(JSON.stringify(overrides.request.bodyTemplate, null, 2))
-        } else if (defaultConfig?.request?.bodyTemplate) {
-            // 显示默认配置
-            setBodyJsonText(JSON.stringify(defaultConfig.request.bodyTemplate, null, 2))
-        } else {
-            setBodyJsonText('')
+        const currentProviderId = defaultConfig?.id
+        
+        // 首次加载或 Provider 切换时，重新初始化
+        if (lastProviderId === undefined || currentProviderId !== lastProviderId) {
+            setLastProviderId(currentProviderId)
+            
+            if (overrides?.request?.bodyTemplate) {
+                setBodyJsonText(JSON.stringify(overrides.request.bodyTemplate, null, 2))
+            } else if (defaultConfig?.request?.bodyTemplate) {
+                setBodyJsonText(JSON.stringify(defaultConfig.request.bodyTemplate, null, 2))
+            } else {
+                setBodyJsonText('{\n  "stream": true\n}')
+            }
+            setJsonError(null)
         }
-    }, [overrides?.request?.bodyTemplate, defaultConfig])
+    }, [defaultConfig?.id, lastProviderId, overrides?.request?.bodyTemplate])
 
     const updateRequest = (updates: NonNullable<AdvancedConfig['request']>) => {
         const newOverrides: AdvancedConfig = {
@@ -144,7 +154,12 @@ export function AdapterOverridesEditor({
 
     const handleReset = () => {
         onChange(undefined)
-        setBodyJsonText('')
+        // 重置为默认值
+        if (defaultConfig?.request?.bodyTemplate) {
+            setBodyJsonText(JSON.stringify(defaultConfig.request.bodyTemplate, null, 2))
+        } else {
+            setBodyJsonText('{\n  "stream": true\n}')
+        }
         setJsonError(null)
     }
 

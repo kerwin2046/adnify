@@ -43,12 +43,25 @@ export function buildOpenAIMessages(
 
   for (const msg of messages) {
     if (isUserMessage(msg)) {
+      // 验证用户消息内容
+      if (msg.content === undefined || msg.content === null) {
+        console.warn('[MessageConverter] Skipping user message with invalid content:', msg.id)
+        continue
+      }
       result.push({
         role: 'user',
         content: msg.content,
       })
     } else if (isAssistantMessage(msg)) {
-      const validToolCalls = (msg.toolCalls || []).filter(tc => toolResultMap.has(tc.id))
+      // 从 parts 中提取 toolCalls（如果 toolCalls 字段为空）
+      let toolCalls = msg.toolCalls || []
+      if (toolCalls.length === 0 && msg.parts) {
+        toolCalls = msg.parts
+          .filter((p): p is import('../types').ToolCallPart => p.type === 'tool_call')
+          .map(p => p.toolCall)
+      }
+      
+      const validToolCalls = toolCalls.filter(tc => toolResultMap.has(tc.id))
 
       if (validToolCalls.length > 0) {
         result.push({
@@ -80,6 +93,9 @@ export function buildOpenAIMessages(
           content: msg.content,
         })
       }
+    } else if (isToolResultMessage(msg)) {
+      // 孤立的工具结果消息（没有对应的 assistant tool_calls）
+      // 可能发生在上下文压缩后，静默跳过
     }
   }
 

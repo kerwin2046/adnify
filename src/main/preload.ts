@@ -332,6 +332,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   resetWhitelist: () => ipcRenderer.invoke('settings:resetWhitelist'),
 
   sendMessage: (params: LLMSendMessageParams) => ipcRenderer.invoke('llm:sendMessage', params),
+  compactContext: (params: LLMSendMessageParams) => ipcRenderer.invoke('llm:compactContext', params),
   abortMessage: () => ipcRenderer.send('llm:abort'),
   invalidateProviders: () => ipcRenderer.invoke('llm:invalidateProviders'),
   invalidateProvider: (providerId: string) => ipcRenderer.invoke('llm:invalidateProvider', providerId),

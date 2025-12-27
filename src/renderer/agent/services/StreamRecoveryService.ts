@@ -50,6 +50,11 @@ class StreamRecoveryServiceClass {
    * 开始新的流式会话
    */
   startSession(assistantMessageId: string, llmMessages: OpenAIMessage[]): string {
+    // 清除之前的恢复点（新会话开始时不应该有旧的恢复点）
+    if (this.currentRecoveryId) {
+      this.recoveryPoints.delete(this.currentRecoveryId)
+    }
+    
     const recoveryId = `recovery-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     
     const recoveryPoint: RecoveryPoint = {

@@ -1,14 +1,29 @@
 import { logger } from '@utils/Logger'
 import { useEffect, useState, useMemo } from 'react'
-import { GitBranch, AlertCircle, XCircle, Database, Loader2, Cpu, Terminal, CheckCircle2, ScrollText, Coins, Minimize2, MessageSquare } from 'lucide-react'
+import {
+  GitBranch,
+  AlertCircle,
+  XCircle,
+  Database,
+  Loader2,
+  Cpu,
+  Terminal,
+  CheckCircle2,
+  ScrollText,
+  Coins,
+  Minimize2,
+  MessageSquare,
+} from 'lucide-react'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 import { IndexStatus } from '@app-types/electron'
 import { indexWorkerService, IndexProgress } from '@services/indexWorkerService'
 import BottomBarPopover from '../ui/BottomBarPopover'
 import ToolCallLogContent from '../panels/ToolCallLogContent'
+import TokenStatsContent from '../panels/TokenStatsContent'
+import CompactionStatsContent from '../panels/CompactionStatsContent'
 import { PlanListPopover } from '../panels/PlanListContent'
-import { useAgentStore, selectMessages, selectContextSummary } from '@renderer/agent'
+import { useAgentStore, selectMessages, selectContextSummary, selectIsCompacting } from '@renderer/agent'
 import { isAssistantMessage, TokenUsage } from '@renderer/agent/types'
 import { useDiagnosticsStore, getFileStats } from '@services/diagnosticsStore'
 
@@ -35,6 +50,7 @@ export default function StatusBar() {
   // 获取消息列表并计算 token 统计
   const messages = useAgentStore(selectMessages)
   const contextSummary = useAgentStore(selectContextSummary)
+  const isCompacting = useAgentStore(selectIsCompacting)
   
   const tokenStats = useMemo(() => {
     let totalUsage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 }
@@ -164,15 +180,38 @@ export default function StatusBar() {
           </div>
         )}
 
-        {/* 上下文压缩状态 */}
-        {contextSummary && (
-          <div 
-            className="flex items-center gap-1.5 text-green-400 cursor-default"
-            title={language === 'zh' ? '对话已压缩' : 'Context compacted'}
+        {/* 上下文压缩状态 - 使用 Popover 显示详情 */}
+        {(isCompacting || contextSummary) && (
+          <BottomBarPopover
+            icon={
+              <div className={`flex items-center gap-1.5 ${
+                isCompacting ? 'text-yellow-400' : 'text-green-400'
+              }`}>
+                {isCompacting ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Minimize2 className="w-3 h-3" />
+                )}
+                <span className={`text-[10px] font-medium ${
+                  isCompacting 
+                    ? 'text-yellow-400'
+                    : 'bg-gradient-to-r from-green-400 to-emerald-300 bg-clip-text text-transparent'
+                }`}>
+                  {isCompacting 
+                    ? (language === 'zh' ? '压缩中...' : 'Compacting...')
+                    : (language === 'zh' ? '已压缩 ✨' : 'Compacted ✨')
+                  }
+                </span>
+              </div>
+            }
+            tooltip={language === 'zh' ? '上下文压缩' : 'Context Compaction'}
+            title={language === 'zh' ? '上下文压缩' : 'Context Compaction'}
+            width={340}
+            height={400}
+            language={language as 'en' | 'zh'}
           >
-            <Minimize2 className="w-3 h-3" />
-            <span>{language === 'zh' ? '已压缩' : 'Compacted'}</span>
-          </div>
+            <CompactionStatsContent language={language as 'en' | 'zh'} />
+          </BottomBarPopover>
         )}
 
         {/* 对话消息统计 */}
@@ -186,19 +225,44 @@ export default function StatusBar() {
           </div>
         )}
 
-        {/* Token 统计 */}
+        {/* Token 统计 - 使用 Popover 显示详情 */}
         {tokenStats.totalUsage.totalTokens > 0 && (
-          <div
-            className="flex items-center gap-1.5 text-text-muted hover:text-text-primary transition-colors cursor-default group"
-            title={`Prompt: ${tokenStats.totalUsage.promptTokens.toLocaleString()} | Completion: ${tokenStats.totalUsage.completionTokens.toLocaleString()} | Total: ${tokenStats.totalUsage.totalTokens.toLocaleString()}`}
+          <BottomBarPopover
+            icon={
+              <div className={`flex items-center gap-1.5 ${
+                tokenStats.totalUsage.totalTokens > 100000
+                  ? 'text-orange-400'
+                  : tokenStats.totalUsage.totalTokens > 50000
+                    ? 'text-yellow-400'
+                    : ''
+              }`}>
+                <Coins className={`w-3 h-3 ${
+                  tokenStats.totalUsage.totalTokens > 100000
+                    ? 'drop-shadow-[0_0_4px_rgba(251,146,60,0.5)] animate-pulse'
+                    : ''
+                }`} />
+                <span className="font-mono text-[10px]">
+                  {tokenStats.totalUsage.totalTokens >= 1000
+                    ? `${(tokenStats.totalUsage.totalTokens / 1000).toFixed(1)}k`
+                    : tokenStats.totalUsage.totalTokens}
+                </span>
+                {tokenStats.totalUsage.totalTokens > 100000 && (
+                  <span className="text-[8px]">🔥</span>
+                )}
+              </div>
+            }
+            tooltip={language === 'zh' ? 'Token 使用统计' : 'Token Usage Stats'}
+            title={language === 'zh' ? 'Token 使用统计' : 'Token Usage Stats'}
+            width={320}
+            height={380}
+            language={language as 'en' | 'zh'}
           >
-            <Coins className="w-3 h-3 group-hover:text-accent transition-colors" />
-            <span className="font-mono text-[10px]">
-              {tokenStats.totalUsage.totalTokens >= 1000
-                ? `${(tokenStats.totalUsage.totalTokens / 1000).toFixed(1)}k`
-                : tokenStats.totalUsage.totalTokens}
-            </span>
-          </div>
+            <TokenStatsContent
+              totalUsage={tokenStats.totalUsage}
+              lastUsage={tokenStats.lastUsage}
+              language={language as 'en' | 'zh'}
+            />
+          </BottomBarPopover>
         )}
 
         <div className="flex items-center gap-4">
