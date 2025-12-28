@@ -23,7 +23,7 @@ interface ToolDependencyAnalysis {
 // 执行结果
 interface ParallelExecutionResult {
   toolCall: LLMToolCall
-  result: { success: boolean; content: string; rejected?: boolean }
+  result: { success: boolean; content: string; rejected?: boolean; meta?: Record<string, unknown> }
 }
 
 /**

@@ -31,7 +31,7 @@ export class ToolExecutionService {
   async executeToolCall(
     toolCall: LLMToolCall,
     context: ToolExecutionContext
-  ): Promise<{ success: boolean; content: string; rejected?: boolean }> {
+  ): Promise<{ success: boolean; content: string; rejected?: boolean; meta?: Record<string, unknown> }> {
     const store = useAgentStore.getState()
     const { id, name, arguments: args } = toolCall
     const { workspacePath, currentAssistantId } = context
@@ -129,7 +129,7 @@ export class ToolExecutionService {
     const resultType = result.success ? 'success' : 'tool_error'
     store.addToolResult(id, name, truncatedContent, resultType, args as Record<string, unknown>)
 
-    return { success: result.success, content: truncatedContent, rejected: false }
+    return { success: result.success, content: truncatedContent, rejected: false, meta: result.meta }
   }
 
   /**

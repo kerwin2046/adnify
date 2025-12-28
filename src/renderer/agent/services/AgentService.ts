@@ -48,7 +48,6 @@ import {
 import { toolExecutionService } from './ToolExecutionService'
 import { buildLLMMessages, compressContext } from '../llm/MessageBuilder'
 import { executeToolCallsIntelligently } from './ParallelToolExecutor'
-import { streamRecoveryService } from './StreamRecoveryService'
 
 export interface LLMCallConfig {
   provider: string
@@ -73,23 +72,73 @@ class AgentServiceClass {
   private streamState: StreamHandlerState = createStreamHandlerState()
   private throttleState = { lastUpdate: 0, lastArgsLen: 0 }
 
-  // 会话级文件追踪
-  private readFilesInSession = new Set<string>()
+  // 会话级文件追踪（带时间戳和内容哈希）
+  private fileReadCache = new Map<string, { contentHash: string; timestamp: number }>()
+  
+  // 文件读取缓存有效期（5分钟）
+  private static readonly FILE_CACHE_TTL_MS = 5 * 60 * 1000
 
-  hasReadFile(filePath: string): boolean {
+  /**
+   * 检查文件是否在有效期内被读取过
+   * @param filePath 文件路径
+   * @param currentContentHash 当前文件内容哈希（可选，用于检测外部修改）
+   */
+  hasValidFileCache(filePath: string, currentContentHash?: string): boolean {
     const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase()
-    return this.readFilesInSession.has(normalizedPath)
+    const cache = this.fileReadCache.get(normalizedPath)
+    
+    if (!cache) return false
+    
+    // 检查是否过期
+    const isExpired = Date.now() - cache.timestamp > AgentServiceClass.FILE_CACHE_TTL_MS
+    if (isExpired) {
+      this.fileReadCache.delete(normalizedPath)
+      return false
+    }
+    
+    // 如果提供了当前内容哈希，检查文件是否被外部修改
+    if (currentContentHash && cache.contentHash !== currentContentHash) {
+      logger.agent.info(`[Agent] File externally modified: ${filePath}`)
+      return false
+    }
+    
+    return true
   }
 
-  markFileAsRead(filePath: string): void {
+  /**
+   * 标记文件已读取，记录内容哈希和时间戳
+   */
+  markFileAsRead(filePath: string, content?: string): void {
     const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase()
-    this.readFilesInSession.add(normalizedPath)
-    logger.agent.info(`[Agent] File marked as read: ${filePath}`)
+    const contentHash = content ? this.simpleHash(content) : ''
+    this.fileReadCache.set(normalizedPath, {
+      contentHash,
+      timestamp: Date.now()
+    })
+    logger.agent.debug(`[Agent] File cached: ${filePath}`)
+  }
+
+  /**
+   * 获取文件的缓存内容哈希
+   */
+  getFileCacheHash(filePath: string): string | null {
+    const normalizedPath = filePath.replace(/\\/g, '/').toLowerCase()
+    return this.fileReadCache.get(normalizedPath)?.contentHash || null
   }
 
   clearSession(): void {
-    this.readFilesInSession.clear()
+    this.fileReadCache.clear()
     logger.agent.info('[Agent] Session cleared')
+  }
+
+  private simpleHash(str: string): string {
+    let hash = 0
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i)
+      hash = ((hash << 5) - hash) + char
+      hash = hash & hash
+    }
+    return hash.toString(36)
   }
 
   async calculateContextStats(contextItems: ContextItem[], currentInput: string): Promise<void> {
@@ -328,6 +377,12 @@ class AgentServiceClass {
           tool_call_id: toolCall.id,
           content: toolResult.content,
         })
+
+        // 更新 LoopDetector 的内容哈希（用于检测文件内容是否真正变化）
+        const meta = toolResult.meta
+        if (meta?.filePath && typeof meta.filePath === 'string' && typeof meta.newContent === 'string') {
+          loopDetector.updateContentHash(meta.filePath, meta.newContent)
+        }
       }
 
       // 收集写操作用于自动检查
@@ -408,11 +463,6 @@ class AgentServiceClass {
       messageCount: messages.length,
     })
 
-    // 启动流式恢复会话
-    if (this.currentAssistantId) {
-      streamRecoveryService.startSession(this.currentAssistantId, messages)
-    }
-
     return new Promise((resolve) => {
       // 重置流式状态
       this.streamState = createStreamHandlerState()
@@ -433,11 +483,6 @@ class AgentServiceClass {
 
           // 处理各类流式事件
           handleTextChunk(chunk, this.streamState, this.currentAssistantId)
-          
-          // 更新恢复点
-          if (chunk.type === 'text' && chunk.content) {
-            streamRecoveryService.appendContent(chunk.content)
-          }
           
           if (chunk.type === 'text' && this.currentAssistantId) {
             detectStreamingXMLToolCalls(this.streamState, this.currentAssistantId)
@@ -463,9 +508,6 @@ class AgentServiceClass {
         window.electronAPI.onLLMDone((result) => {
           // 结束性能监控
           performanceMonitor.end(`llm:${config.model}`, true)
-          
-          // 成功完成，结束恢复会话
-          streamRecoveryService.endSession(true)
 
           cleanupListeners()
           const finalResult = handleLLMDone(result, this.streamState, this.currentAssistantId)
@@ -485,14 +527,6 @@ class AgentServiceClass {
           // 结束性能监控（失败）
           performanceMonitor.end(`llm:${config.model}`, false, { error: error.message })
 
-          // 如果是用户中断，直接结束会话，不保留恢复点
-          if (error.code === 'ABORTED') {
-            streamRecoveryService.endSession(true)
-          } else {
-            // 记录错误到恢复服务（保留恢复点）
-            streamRecoveryService.recordError(error.message)
-          }
-
           closeReasoningIfNeeded(this.streamState, this.currentAssistantId)
           cleanupListeners()
           resolve({ error: error.message })
@@ -507,7 +541,6 @@ class AgentServiceClass {
         systemPrompt: '',
       }).catch((err) => {
         cleanupListeners()
-        streamRecoveryService.recordError(err.message || 'Failed to send message')
         resolve({ error: err.message || 'Failed to send message' })
       })
     })

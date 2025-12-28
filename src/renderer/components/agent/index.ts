@@ -10,5 +10,4 @@ export { default as ChatPanel } from './ChatPanel'
 
 // 新增组件
 export { default as BranchManager, BranchSelector, BranchIndicator, MessageBranchActions } from './BranchManager'
-export { default as StreamRecoveryBanner, RecoveryProgressIndicator } from './StreamRecoveryBanner'
 export { default as ContextCompactionIndicator, CompactionProgressBar } from './ContextCompactionIndicator'

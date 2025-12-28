@@ -45,7 +45,6 @@ export { composerService } from './services/composerService'
 // 新增服务
 export { contextCompactionService } from './services/ContextCompactionService'
 export { executeToolCallsIntelligently, getExecutionStats } from './services/ParallelToolExecutor'
-export { streamRecoveryService } from './services/StreamRecoveryService'
 export { toolExecutionService } from './services/ToolExecutionService'
 
 // LLM 相关

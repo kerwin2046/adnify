@@ -96,7 +96,7 @@ export const toolExecutors: Record<string, (args: Record<string, unknown>, ctx: 
         const content = await window.electronAPI.readFile(path)
         if (content === null) return { success: false, result: '', error: `File not found: ${path}` }
 
-        AgentService.markFileAsRead(path)
+        AgentService.markFileAsRead(path, content)
 
         const lines = content.split('\n')
         const startLine = typeof args.start_line === 'number' ? Math.max(1, args.start_line) : 1
@@ -154,7 +154,7 @@ export const toolExecutors: Record<string, (args: Record<string, unknown>, ctx: 
                 const content = await window.electronAPI.readFile(validPath)
                 if (content !== null) {
                     result += `\n--- File: ${p} ---\n${content}\n`
-                    AgentService.markFileAsRead(validPath)
+                    AgentService.markFileAsRead(validPath, content)
                 } else {
                     result += `\n--- File: ${p} ---\n[File not found]\n`
                 }
@@ -167,21 +167,47 @@ export const toolExecutors: Record<string, (args: Record<string, unknown>, ctx: 
 
     async edit_file(args, ctx) {
         const path = resolvePath(args.path, ctx.workspacePath)
-        if (!AgentService.hasReadFile(path)) {
-            return { success: false, result: '', error: 'Read-before-write required: You must read the file first.' }
-        }
-
         const originalContent = await window.electronAPI.readFile(path)
         if (originalContent === null) return { success: false, result: '', error: `File not found: ${path}` }
+
+        // 计算当前内容哈希，检查文件是否被外部修改
+        const currentHash = AgentService.getFileCacheHash(path)
+        const simpleHash = (str: string) => {
+            let hash = 0
+            for (let i = 0; i < str.length; i++) {
+                hash = ((hash << 5) - hash) + str.charCodeAt(i)
+                hash = hash & hash
+            }
+            return hash.toString(36)
+        }
+        
+        // 如果文件在缓存中但内容已变化，警告但不阻止（依赖 SEARCH 块匹配验证）
+        if (currentHash && currentHash !== simpleHash(originalContent)) {
+            logger.agent.warn(`[edit_file] File ${path} was modified externally since last read`)
+        }
 
         const blocks = parseSearchReplaceBlocks(args.search_replace_blocks as string)
         if (blocks.length === 0) return { success: false, result: '', error: 'No valid SEARCH/REPLACE blocks found.' }
 
         const applyResult = applySearchReplaceBlocks(originalContent, blocks)
-        if (applyResult.errors.length > 0) return { success: false, result: '', error: applyResult.errors.join('\n') }
+        if (applyResult.errors.length > 0) {
+            // SEARCH 块匹配失败时，提供更详细的错误信息
+            const hasCache = AgentService.hasValidFileCache(path)
+            const tip = hasCache
+                ? 'The SEARCH content does not match. The file may have been modified. Try read_file to get the latest content.'
+                : 'The SEARCH content does not match. Use read_file first to get the exact content, or use replace_file_content with line numbers.'
+            return {
+                success: false,
+                result: '',
+                error: applyResult.errors.join('\n') + `\n\nTip: ${tip}`
+            }
+        }
 
         const success = await window.electronAPI.writeFile(path, applyResult.newContent)
         if (!success) return { success: false, result: '', error: 'Failed to write file' }
+
+        // 更新文件缓存
+        AgentService.markFileAsRead(path, applyResult.newContent)
 
         const lineChanges = calculateLineChanges(originalContent, applyResult.newContent)
         return { success: true, result: 'File updated successfully', meta: { filePath: path, oldContent: originalContent, newContent: applyResult.newContent, linesAdded: lineChanges.added, linesRemoved: lineChanges.removed } }
@@ -200,27 +226,44 @@ export const toolExecutors: Record<string, (args: Record<string, unknown>, ctx: 
 
     async replace_file_content(args, ctx) {
         const path = resolvePath(args.path, ctx.workspacePath)
-        if (!AgentService.hasReadFile(path)) {
-            return { success: false, result: '', error: 'Read-before-write required' }
-        }
-
         const originalContent = await window.electronAPI.readFile(path)
         if (originalContent === null) return { success: false, result: '', error: `File not found: ${path}` }
+
+        // 对于行号替换，建议先读取文件以确保行号准确
+        if (!AgentService.hasValidFileCache(path)) {
+            logger.agent.warn(`[replace_file_content] File ${path} not in cache, line numbers may be inaccurate`)
+        }
 
         const content = args.content as string
         if (originalContent === '') {
             const success = await window.electronAPI.writeFile(path, content)
+            if (success) AgentService.markFileAsRead(path, content)
             return success
                 ? { success: true, result: 'File written (was empty)', meta: { filePath: path, oldContent: '', newContent: content, linesAdded: content.split('\n').length, linesRemoved: 0 } }
                 : { success: false, result: '', error: 'Failed to write file' }
         }
 
         const lines = originalContent.split('\n')
-        lines.splice((args.start_line as number) - 1, (args.end_line as number) - (args.start_line as number) + 1, ...content.split('\n'))
+        const startLine = args.start_line as number
+        const endLine = args.end_line as number
+        
+        // 验证行号范围
+        if (startLine < 1 || endLine > lines.length || startLine > endLine) {
+            return {
+                success: false,
+                result: '',
+                error: `Invalid line range: ${startLine}-${endLine}. File has ${lines.length} lines. Use read_file to verify line numbers.`
+            }
+        }
+        
+        lines.splice(startLine - 1, endLine - startLine + 1, ...content.split('\n'))
         const newContent = lines.join('\n')
 
         const success = await window.electronAPI.writeFile(path, newContent)
         if (!success) return { success: false, result: '', error: 'Failed to write file' }
+        
+        // 更新文件缓存
+        AgentService.markFileAsRead(path, newContent)
 
         const lineChanges = calculateLineChanges(originalContent, newContent)
         return { success: true, result: 'File updated successfully', meta: { filePath: path, oldContent: originalContent, newContent, linesAdded: lineChanges.added, linesRemoved: lineChanges.removed } }

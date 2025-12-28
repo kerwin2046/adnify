@@ -37,7 +37,6 @@ import { Button } from '../ui'
 import { useToast } from '@/renderer/components/common/ToastProvider'
 import { BranchSelector } from './BranchManager'
 import BranchManager from './BranchManager'
-import StreamRecoveryBanner from './StreamRecoveryBanner'
 
 export default function ChatPanel() {
   const {
@@ -804,9 +803,6 @@ export default function ChatPanel() {
 
         {/* Messages Area */}
         <div className="flex-1 min-h-0 relative z-0 flex flex-col pt-12">
-          {/* Stream Recovery Banner */}
-          <StreamRecoveryBanner language={language} />
-          
           {/* API Key Warning */}
           {!hasApiKey && (
             <div className="m-4 p-4 border border-warning/20 bg-warning/5 rounded-xl flex gap-3 backdrop-blur-sm relative z-10">
