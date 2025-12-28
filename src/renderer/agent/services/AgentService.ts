@@ -388,12 +388,16 @@ class AgentServiceClass {
         }
       }
 
-      const recentMessages = store.getMessages()
-      const hasWhitelistError = recentMessages.some(msg =>
-        msg.role === 'tool' && (msg.content.includes('whitelist') || msg.content.includes('白名单'))
-      )
-      if (hasWhitelistError) {
-        store.appendToAssistant(this.currentAssistantId!, '\n\n💡 **Tip**: You can add commands to the whitelist in Settings > Security > Shell Command Whitelist.')
+      // 检查是否显示安全警告
+      const { securitySettings } = useStore.getState()
+      if (securitySettings.showSecurityWarnings !== false) {
+        const recentMessages = store.getMessages()
+        const hasWhitelistError = recentMessages.some(msg =>
+          msg.role === 'tool' && (msg.content.includes('whitelist') || msg.content.includes('白名单'))
+        )
+        if (hasWhitelistError) {
+          store.appendToAssistant(this.currentAssistantId!, '\n\n💡 **Tip**: You can add commands to the whitelist in Settings > Security > Shell Command Whitelist.')
+        }
       }
 
       if (userRejected) break

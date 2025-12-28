@@ -214,6 +214,26 @@ const DiffLineItem = React.memo(({ line, language }: { line: DiffLine, language:
 
 DiffLineItem.displayName = 'DiffLineItem'
 
+// 骨架屏组件 - 导出供外部（如 FileChangeCard）使用，保持视觉一致
+export const DiffSkeleton = () => (
+    <div className="min-h-[160px] p-4 w-full select-none flex flex-col gap-3">
+        {[...Array(5)].map((_, i) => (
+            <div key={i} className="flex items-center gap-4 animate-pulse">
+                {/* 模拟行号列 */}
+                <div className="w-8 h-3 bg-white/20 rounded-sm shrink-0" />
+                {/* 模拟代码内容 - 随机宽度 */}
+                <div 
+                    className="h-3 bg-white/20 rounded-sm" 
+                    style={{ 
+                        width: `${Math.max(30, 85 - (i * 15) % 50)}%`,
+                        opacity: 0.7 - (i * 0.1) // 渐变透明度，更自然
+                    }} 
+                />
+            </div>
+        ))}
+    </div>
+)
+
 export default function InlineDiffPreview({
     oldContent,
     newContent,
@@ -285,12 +305,7 @@ export default function InlineDiffPreview({
     }, [diffLines, maxLines])
 
     if (isLoading) {
-        return (
-             <div className="flex flex-col items-center justify-center py-8 text-text-muted gap-2">
-                 <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-                 <span className="text-xs">Computing diff...</span>
-             </div>
-        )
+        return <DiffSkeleton />
     }
 
     if (error) {

@@ -292,7 +292,11 @@ export const toolExecutors: Record<string, (args: Record<string, unknown>, ctx: 
     async run_command(args, ctx) {
         const command = args.command as string
         const cwd = args.cwd ? resolvePath(args.cwd, ctx.workspacePath, true) : ctx.workspacePath
-        const timeout = ((args.timeout as number) || 30) * 1000
+        // 从配置获取超时时间，args.timeout 可以覆盖
+        const config = getAgentConfig()
+        const timeout = args.timeout 
+            ? (args.timeout as number) * 1000 
+            : config.toolTimeoutMs
 
         // 使用后台执行（不依赖 PTY，更可靠）
         const result = await window.electronAPI.executeBackground({

@@ -83,7 +83,7 @@ function getDefaultOptions(): CompletionOptions {
     debounceMs: config.performance.completionDebounceMs,
     maxTokens: config.ai.completionMaxTokens,
     temperature: config.ai.completionTemperature,
-    triggerCharacters: ['.', '(', '{', '[', '"', "'", '/', ' ', '\n'],
+    triggerCharacters: config.ai.completionTriggerChars || ['.', '(', '{', '[', '"', "'", '/', ' ', '\n'],
     fimEnabled: true,
     contextLines: 50,
     multilineSuggestions: true,

@@ -16,6 +16,13 @@ export interface EditorConfig {
   lineHeight: number
   minimap: boolean
   minimapScale: number
+  lineNumbers: 'on' | 'off' | 'relative'
+  bracketPairColorization: boolean
+
+  // 编辑器行为
+  formatOnSave: boolean
+  autoSave: 'off' | 'afterDelay' | 'onFocusChange'
+  autoSaveDelay: number // 自动保存延迟（毫秒）
 
   // 终端
   terminal: {
@@ -48,6 +55,9 @@ export interface EditorConfig {
     // 缓冲区大小
     terminalBufferSize: number // 终端输出缓冲区大小
     maxResultLength: number // 结果显示最大长度
+
+    // 文件大小警告阈值（MB）
+    largeFileWarningThresholdMB: number
   }
 
   // AI 代码补全相关（Agent/上下文配置已迁移到 agentConfig）
@@ -55,6 +65,7 @@ export interface EditorConfig {
     completionEnabled: boolean   // 是否启用 AI 代码补全
     completionMaxTokens: number  // 补全最大 token 数
     completionTemperature: number // 补全温度
+    completionTriggerChars: string[] // 补全触发字符
   }
 
   // 忽略的目录
@@ -71,6 +82,13 @@ export const defaultEditorConfig: EditorConfig = {
   lineHeight: 1.5,
   minimap: true,
   minimapScale: 1,
+  lineNumbers: 'on',
+  bracketPairColorization: true,
+
+  // 编辑器行为
+  formatOnSave: false,
+  autoSave: 'off',
+  autoSaveDelay: 1000,
 
   // 终端
   terminal: {
@@ -94,6 +112,7 @@ export const defaultEditorConfig: EditorConfig = {
     commandTimeoutMs: 30000, // 30 秒
     terminalBufferSize: 500,
     maxResultLength: 2000,
+    largeFileWarningThresholdMB: 5,
   },
 
   // AI 代码补全相关（Agent/上下文配置已迁移到 agentConfig）
@@ -101,6 +120,7 @@ export const defaultEditorConfig: EditorConfig = {
     completionEnabled: true,
     completionMaxTokens: 256,
     completionTemperature: 0.1,
+    completionTriggerChars: ['.', '(', '{', '[', '"', "'", '/', ' '],
   },
 
   // 忽略的目录（使用共享常量）

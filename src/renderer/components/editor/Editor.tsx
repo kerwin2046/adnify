@@ -116,6 +116,7 @@ export default function Editor() {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
   const monacoRef = useRef<typeof import('monaco-editor') | null>(null)
   const cursorDebounceRef = useRef<NodeJS.Timeout | null>(null)
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null)
 
 
   // Lint 错误状态
@@ -715,10 +716,27 @@ export default function Editor() {
   }, [])
 
   const handleSave = useCallback(async () => {
-    if (activeFile) {
+    if (activeFile && editorRef.current) {
       try {
-        const success = await window.electronAPI.writeFile(activeFile.path, activeFile.content)
+        const config = getEditorConfig()
+        
+        // 保存时格式化
+        if (config.formatOnSave) {
+          const formatAction = editorRef.current.getAction('editor.action.formatDocument')
+          if (formatAction) {
+            await formatAction.run()
+          }
+        }
+        
+        // 获取最新内容（格式化后）
+        const content = editorRef.current.getValue()
+        
+        const success = await window.electronAPI.writeFile(activeFile.path, content)
         if (success) {
+          // 更新 store 中的内容（如果格式化了）
+          if (config.formatOnSave && content !== activeFile.content) {
+            updateFileContent(activeFile.path, content)
+          }
           markFileSaved(activeFile.path)
           toast.success(
             language === 'zh' ? '文件已保存' : 'File Saved',
@@ -737,7 +755,61 @@ export default function Editor() {
         )
       }
     }
-  }, [activeFile, markFileSaved, language])
+  }, [activeFile, markFileSaved, language, updateFileContent])
+
+  // 自动保存处理
+  const triggerAutoSave = useCallback((filePath: string) => {
+    const config = getEditorConfig()
+    if (config.autoSave === 'off') return
+    
+    // 清除之前的定时器
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = null
+    }
+    
+    if (config.autoSave === 'afterDelay') {
+      autoSaveTimerRef.current = setTimeout(async () => {
+        const file = openFiles.find((f: { path: string; isDirty?: boolean }) => f.path === filePath)
+        if (file?.isDirty) {
+          const success = await window.electronAPI.writeFile(file.path, file.content)
+          if (success) {
+            markFileSaved(file.path)
+          }
+        }
+      }, config.autoSaveDelay)
+    }
+  }, [openFiles, markFileSaved])
+
+  // 失去焦点时自动保存
+  useEffect(() => {
+    const config = getEditorConfig()
+    if (config.autoSave !== 'onFocusChange') return
+    
+    const handleBlur = async () => {
+      // 保存所有脏文件
+      for (const file of openFiles) {
+        if ((file as any).isDirty) {
+          const success = await window.electronAPI.writeFile(file.path, file.content)
+          if (success) {
+            markFileSaved(file.path)
+          }
+        }
+      }
+    }
+    
+    window.addEventListener('blur', handleBlur)
+    return () => window.removeEventListener('blur', handleBlur)
+  }, [openFiles, markFileSaved])
+
+  // 清理自动保存定时器
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
+      }
+    }
+  }, [])
 
   // 保存指定文件
   const saveFile = useCallback(async (filePath: string) => {
@@ -1292,6 +1364,7 @@ export default function Editor() {
                   if (value !== undefined) {
                     updateFileContent(activeFile.path, value)
                     didChangeDocument(activeFile.path, value)
+                    triggerAutoSave(activeFile.path)
                   }
                 }}
                 loading={
@@ -1303,15 +1376,17 @@ export default function Editor() {
                   fontSize: getEditorConfig().fontSize,
                   fontFamily: getEditorConfig().fontFamily,
                   fontLigatures: true,
+                  tabSize: getEditorConfig().tabSize,
+                  wordWrap: getEditorConfig().wordWrap,
                   minimap: { enabled: getEditorConfig().minimap, scale: getEditorConfig().minimapScale, renderCharacters: false },
                   scrollBeyondLastLine: false,
                   smoothScrolling: true,
                   cursorBlinking: 'smooth',
                   cursorSmoothCaretAnimation: 'on',
                   padding: { top: 16 },
-                  lineNumbers: 'on',
+                  lineNumbers: getEditorConfig().lineNumbers,
                   renderLineHighlight: 'all',
-                  bracketPairColorization: { enabled: true },
+                  bracketPairColorization: { enabled: getEditorConfig().bracketPairColorization },
                   automaticLayout: true,
                   inlineSuggest: { enabled: true },
                   suggest: {

@@ -1,6 +1,6 @@
 /**
  * 聊天输入组件
- * 新设计：悬浮式 Pill Bar 设计，更加现代和简洁
+ * 新设计：极简悬浮胶囊设计，注重沉浸感
  */
 import { useRef, useCallback, useMemo, useState } from 'react'
 import {
@@ -125,32 +125,33 @@ export default function ChatInput({
   )
 
   return (
-    <div ref={inputContainerRef} className="p-4 z-20 bg-transparent">
+    <div ref={inputContainerRef} className="p-4 z-20">
       <div
         className={`
-            relative group rounded-[24px] border transition-all duration-300 ease-out
+            relative group flex flex-col rounded-3xl transition-all duration-300 ease-out
             ${isStreaming
-            ? 'border-accent/30 bg-accent/5 shadow-[0_0_20px_rgba(var(--color-accent),0.1)]'
+            ? 'bg-surface/50 border border-accent/20 ring-1 ring-accent/10'
             : isFocused
-              ? 'border-accent/40 bg-background shadow-2xl shadow-accent/5 ring-1 ring-accent/10'
-              : 'border-white/10 bg-background/80 backdrop-blur-xl hover:border-white/20 shadow-xl'
+              ? 'bg-surface/80 border border-white/10 ring-1 ring-white/10 shadow-2xl shadow-black/20 transform -translate-y-0.5'
+              : 'bg-surface/40 border border-white/5 hover:bg-surface/60 hover:border-white/10 shadow-xl shadow-black/10'
           }
+            backdrop-blur-xl
         `}
       >
         {/* Image Previews */}
         {images.length > 0 && (
-          <div className="flex gap-2 px-4 pt-3 pb-0 overflow-x-auto custom-scrollbar">
+          <div className="flex gap-3 px-4 pt-4 overflow-x-auto custom-scrollbar">
             {images.map((img) => (
               <div
                 key={img.id}
-                className="relative group/img flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border border-border-subtle shadow-sm"
+                className="relative group/img flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border border-white/10 shadow-sm"
               >
                 <img src={img.previewUrl} alt="preview" className="w-full h-full object-cover" />
                 <button
                   onClick={() => removeImage(img.id)}
-                  className="absolute top-0.5 right-0.5 p-0.5 bg-black/50 backdrop-blur rounded-full text-white hover:bg-red-500 transition-colors opacity-0 group-hover/img:opacity-100"
+                  className="absolute top-1 right-1 p-1 bg-black/60 backdrop-blur rounded-full text-white hover:bg-red-500 transition-all opacity-0 group-hover/img:opacity-100"
                 >
-                  <X className="w-2.5 h-2.5" />
+                  <X className="w-3 h-3" />
                 </button>
               </div>
             ))}
@@ -159,29 +160,30 @@ export default function ChatInput({
 
         {/* Context Chips */}
         {(contextItems.length > 0 || fileRefs.length > 0 || hasCodebaseRef || hasSymbolsRef || hasGitRef || hasTerminalRef || hasWebRef || (activeFilePath && onAddFile)) && (
-          <div className="flex flex-wrap gap-1.5 px-4 pt-3 pb-0.5">
+          <div className="flex flex-wrap gap-2 px-4 pt-3 pb-1">
             {/* Active File Suggestion */}
             {activeFilePath && onAddFile && !contextItems.some(item => item.type === 'File' && (item as FileContext).uri === activeFilePath) && (
               <button
                 onClick={() => onAddFile(activeFilePath)}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-accent/10 text-accent text-[10px] font-medium rounded-full border border-accent/20 animate-fade-in select-none hover:bg-accent/20 transition-colors"
+                className="inline-flex items-center gap-1.5 px-2 py-1 bg-accent/5 text-accent text-[11px] font-medium rounded-lg border border-accent/10 animate-fade-in select-none hover:bg-accent/15 transition-colors"
               >
-                <Plus className="w-2.5 h-2.5" />
+                <Plus className="w-3 h-3" />
                 <span>{activeFilePath.split(/[\\/]/).pop()}</span>
               </button>
             )}
-            {/* Context Items - 拖放添加的 */}
+            {/* Context Items */}
             {contextItems.filter(item => ['File', 'Folder', 'CodeSelection'].includes(item.type)).map((item, i) => {
               const getContextStyle = (type: string) => {
                 switch (type) {
-                  case 'File': return { bg: 'bg-white/5', text: 'text-text-secondary', border: 'border-white/10', Icon: FileText }
-                  case 'CodeSelection': return { bg: 'bg-purple-500/10', text: 'text-purple-400', border: 'border-purple-500/20', Icon: Code }
-                  case 'Folder': return { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/20', Icon: Folder }
-                  default: return { bg: 'bg-white/5', text: 'text-text-muted', border: 'border-white/10', Icon: FileText }
+                  case 'File': return { bg: 'bg-white/5', text: 'text-text-secondary', border: 'border-white/5', Icon: FileText }
+                  case 'CodeSelection': return { bg: 'bg-purple-500/10', text: 'text-purple-300', border: 'border-purple-500/10', Icon: Code }
+                  case 'Folder': return { bg: 'bg-yellow-500/10', text: 'text-yellow-300', border: 'border-yellow-500/10', Icon: Folder }
+                  default: return { bg: 'bg-white/5', text: 'text-text-muted', border: 'border-white/5', Icon: FileText }
                 }
               }
 
-              const getLabel = () => {
+              const style = getContextStyle(item.type)
+              const label = (() => {
                 switch (item.type) {
                   case 'File':
                   case 'Folder': {
@@ -196,77 +198,36 @@ export default function ChatInput({
                   }
                   default: return 'Context'
                 }
-              }
-
-              const style = getContextStyle(item.type)
-              const label = getLabel()
-              const uri = (item as any).uri || ''
+              })()
 
               return (
                 <span
                   key={`ctx-${i}`}
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 ${style.bg} ${style.text} text-[10px] font-medium rounded-full border ${style.border} animate-fade-in select-none group/chip`}
-                  title={uri || item.type}
+                  className={`inline-flex items-center gap-1.5 px-2 py-1 ${style.bg} ${style.text} text-[11px] font-medium rounded-lg border ${style.border} animate-fade-in select-none group/chip transition-colors hover:border-white/20`}
                 >
-                  <style.Icon className="w-2.5 h-2.5" />
-                  <span className="max-w-[100px] truncate">{label}</span>
+                  <style.Icon className="w-3 h-3 opacity-70" />
+                  <span className="max-w-[120px] truncate">{label}</span>
                   <button
                     onClick={() => onRemoveContextItem(item)}
-                    className="ml-0.5 p-0.5 rounded-full hover:bg-white/10 text-current hover:text-status-error opacity-0 group-hover/chip:opacity-100 transition-opacity"
+                    className="ml-0.5 p-0.5 rounded-md hover:bg-white/10 text-current hover:text-red-400 opacity-0 group-hover/chip:opacity-100 transition-all"
                   >
-                    <X className="w-2 h-2" />
+                    <X className="w-3 h-3" />
                   </button>
                 </span>
               )
             })}
 
-            {/* 文件引用 - 从输入文本中解析的 @file:xxx */}
-            {fileRefs.map((ref, i) => (
-              <span
-                key={`file-${i}`}
-                className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-white/5 text-text-secondary text-[10px] font-medium rounded-full border border-white/10 animate-fade-in select-none"
-                title={ref}
-              >
-                <FileText className="w-2.5 h-2.5 opacity-70" />
-                <span className="max-w-[100px] truncate">{ref}</span>
-              </span>
-            ))}
-
-            {/* @xxx 引用 - 跟随输入文本 */}
-            {hasCodebaseRef && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-green-500/10 text-green-400 text-[10px] font-medium rounded-full border border-green-500/20 animate-fade-in select-none">
-                <Database className="w-2.5 h-2.5" />
-                @codebase
-              </span>
-            )}
-            {hasSymbolsRef && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-pink-500/10 text-pink-400 text-[10px] font-medium rounded-full border border-pink-500/20 animate-fade-in select-none">
-                <Code className="w-2.5 h-2.5" />
-                @symbols
-              </span>
-            )}
-            {hasGitRef && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-orange-500/10 text-orange-400 text-[10px] font-medium rounded-full border border-orange-500/20 animate-fade-in select-none">
-                <GitBranch className="w-2.5 h-2.5" />
-                @git
-              </span>
-            )}
-            {hasTerminalRef && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 text-[10px] font-medium rounded-full border border-cyan-500/20 animate-fade-in select-none">
-                <Terminal className="w-2.5 h-2.5" />
-                @terminal
-              </span>
-            )}
-            {hasWebRef && (
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-500/10 text-blue-400 text-[10px] font-medium rounded-full border border-blue-500/20 animate-fade-in select-none">
-                <Globe className="w-2.5 h-2.5" />
-                @web
-              </span>
-            )}
+            {/* 其他引用 Chips (Codebase, Git etc) - 保持一致样式 */}
+            {hasCodebaseRef && <ContextChip icon={Database} label="@codebase" color="green" />}
+            {hasSymbolsRef && <ContextChip icon={Code} label="@symbols" color="pink" />}
+            {hasGitRef && <ContextChip icon={GitBranch} label="@git" color="orange" />}
+            {hasTerminalRef && <ContextChip icon={Terminal} label="@terminal" color="cyan" />}
+            {hasWebRef && <ContextChip icon={Globe} label="@web" color="blue" />}
           </div>
         )}
 
-        <div className="flex items-end gap-2 pl-4 pr-2 py-2">
+        {/* Input Area */}
+        <div className="flex items-end gap-3 px-4 pb-3 pt-2">
           <textarea
             ref={textareaRef}
             value={input}
@@ -278,13 +239,13 @@ export default function ChatInput({
             placeholder={hasApiKey ? t('pasteImagesHint', language) : t('configureApiKey', language)}
             disabled={!hasApiKey || hasPendingToolCall}
             className="flex-1 bg-transparent border-none p-0 py-2
-                       text-sm text-text-primary placeholder-text-muted/60 resize-none
-                       focus:ring-0 focus:outline-none leading-relaxed custom-scrollbar max-h-[200px] caret-accent"
+                       text-[15px] text-text-primary placeholder-text-muted/40 resize-none
+                       focus:ring-0 focus:outline-none leading-relaxed custom-scrollbar max-h-[200px] caret-accent font-medium tracking-wide"
             rows={1}
-            style={{ minHeight: '40px', fontSize: `${editorConfig.fontSize}px` }}
+            style={{ minHeight: '44px', fontSize: `${Math.max(14, editorConfig.fontSize)}px` }}
           />
 
-          <div className="flex items-center gap-1 pb-1">
+          <div className="flex items-center gap-2 pb-1.5">
             <input
               type="file"
               ref={fileInputRef}
@@ -303,9 +264,9 @@ export default function ChatInput({
               size="icon"
               onClick={() => fileInputRef.current?.click()}
               title={t('uploadImage', language)}
-              className="rounded-full w-8 h-8 hover:bg-white/10 text-text-muted hover:text-text-primary transition-colors"
+              className="rounded-xl w-8 h-8 hover:bg-white/10 text-text-muted hover:text-text-primary transition-all active:scale-95"
             >
-              <Paperclip className="w-4 h-4" />
+              <Paperclip className="w-4 h-4 stroke-[2.5]" />
             </Button>
 
             <button
@@ -313,32 +274,33 @@ export default function ChatInput({
               disabled={
                 !hasApiKey || ((!input.trim() && images.length === 0) && !isStreaming) || hasPendingToolCall
               }
-              className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ml-1
+              className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all duration-300 cubic-bezier(0.34, 1.56, 0.64, 1)
                   ${isStreaming
-                  ? 'bg-transparent border border-status-error text-status-error hover:bg-status-error/10'
+                  ? 'bg-surface/50 text-text-primary border border-white/10 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/20'
                   : input.trim() || images.length > 0
-                    ? 'bg-accent text-white shadow-lg shadow-accent/20 hover:scale-105 hover:bg-accent-hover'
-                    : 'bg-white/5 text-text-muted/30 cursor-not-allowed'
+                    ? 'bg-white text-black shadow-lg shadow-white/10 hover:scale-105 active:scale-95'
+                    : 'bg-white/5 text-text-muted/20 cursor-not-allowed'
                 }
                   `}
             >
               {isStreaming ? (
-                <div className="w-2.5 h-2.5 bg-current rounded-[1px]" />
+                <div className="w-2.5 h-2.5 bg-current rounded-[1px] animate-pulse" />
               ) : (
-                <ArrowUp className="w-4 h-4 stroke-[3]" />
+                <ArrowUp className="w-5 h-5 stroke-[3]" />
               )}
             </button>
           </div>
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between px-2">
-        <div className="flex items-center gap-1">
+      {/* Mode Switcher & Footer */}
+      <div className="mt-3 flex items-center justify-between px-3">
+        <div className="flex items-center gap-1 bg-black/20 p-0.5 rounded-full border border-white/5 backdrop-blur-md">
           <ModeButton
             active={chatMode === 'chat'}
             onClick={() => setChatMode('chat')}
           >
-            CHAT
+            Chat
           </ModeButton>
           <ModeButton
             active={chatMode === 'agent'}
@@ -346,7 +308,7 @@ export default function ChatInput({
             accent
           >
             <Sparkles className="w-3 h-3" />
-            AGENT
+            Agent
           </ModeButton>
           <ModeButton
             active={chatMode === 'plan'}
@@ -354,10 +316,10 @@ export default function ChatInput({
             accent
           >
             <ClipboardList className="w-3 h-3" />
-            PLAN
+            Plan
           </ModeButton>
         </div>
-        <span className="text-[10px] text-text-muted opacity-40 font-mono">
+        <span className="text-[10px] text-text-muted/40 font-medium tracking-wide">
           {t('returnToSend', language)}
         </span>
       </div>
@@ -365,7 +327,7 @@ export default function ChatInput({
   )
 }
 
-// 模式按钮组件
+// 辅助组件：模式按钮
 function ModeButton({
   active,
   onClick,
@@ -380,15 +342,31 @@ function ModeButton({
   return (
     <button
       onClick={onClick}
-      className={`h-6 px-3 gap-1.5 text-[10px] font-bold transition-all duration-200 rounded-full flex items-center
+      className={`h-7 px-3 gap-1.5 text-[11px] font-semibold transition-all duration-200 rounded-full flex items-center
         ${active
-          ? accent
-            ? 'bg-accent/10 text-accent shadow-sm shadow-accent/5 ring-1 ring-accent/20'
-            : 'bg-white/10 text-text-primary shadow-sm ring-1 ring-white/10'
-          : 'text-text-muted hover:text-text-secondary hover:bg-white/5'
+          ? 'bg-surface/80 text-text-primary shadow-sm ring-1 ring-white/10'
+          : 'text-text-muted/60 hover:text-text-secondary hover:bg-white/5'
         }`}
     >
       {children}
     </button>
+  )
+}
+
+// 辅助组件：上下文 Chip
+function ContextChip({ icon: Icon, label, color }: { icon: any, label: string, color: string }) {
+  const colorMap: Record<string, string> = {
+    green: 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
+    pink: 'text-pink-400 bg-pink-400/10 border-pink-400/20',
+    orange: 'text-orange-400 bg-orange-400/10 border-orange-400/20',
+    cyan: 'text-cyan-400 bg-cyan-400/10 border-cyan-400/20',
+    blue: 'text-blue-400 bg-blue-400/10 border-blue-400/20',
+  }
+  
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2 py-1 ${colorMap[color]} text-[11px] font-medium rounded-lg border animate-fade-in select-none`}>
+      <Icon className="w-3 h-3" />
+      {label}
+    </span>
   )
 }

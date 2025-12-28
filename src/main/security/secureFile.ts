@@ -438,6 +438,11 @@ export function registerSecureFileHandlers(
     return securityManager.getAuditLogs(limit)
   })
 
+  ipcMain.handle('security:clearAuditLogs', () => {
+    securityManager.clearAuditLogs()
+    return true
+  })
+
   ipcMain.handle('security:getPermissions', () => {
     const securityStore = new Store({ name: 'security' })
     return securityStore.get('permissions', {})
@@ -446,7 +451,8 @@ export function registerSecureFileHandlers(
   ipcMain.handle('security:resetPermissions', () => {
     const securityStore = new Store({ name: 'security' })
     securityStore.delete('permissions')
-    securityStore.delete('audit')
+    // 审计日志现在存储在工作区 .adnify/audit.log，不再使用 electron-store
+    securityManager.clearAuditLogs()
     return true
   })
 }

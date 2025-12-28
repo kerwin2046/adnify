@@ -3,7 +3,7 @@
  */
 
 import { useState } from 'react'
-import { Layout, Type, Sparkles, Terminal, Check } from 'lucide-react'
+import { Layout, Type, Sparkles, Terminal, Check, Settings2 } from 'lucide-react'
 import { useStore } from '@store'
 import { getEditorConfig, saveEditorConfig, EditorConfig } from '@renderer/config/editorConfig'
 import { themes } from '@components/editor/ThemeManager'
@@ -93,11 +93,17 @@ export function EditorSettings({ settings, setSettings, language }: EditorSettin
                     <Switch label={language === 'zh' ? '括号配对着色' : 'Bracket Pair Colorization'} checked={settings.bracketPairColorization} onChange={(e) => setSettings({ ...settings, bracketPairColorization: e.target.checked })} />
                     <Switch label={language === 'zh' ? '保存时格式化' : 'Format on Save'} checked={settings.formatOnSave} onChange={(e) => setSettings({ ...settings, formatOnSave: e.target.checked })} />
                 </div>
-                <div className="pt-4 border-t border-border-subtle">
+                <div className="pt-4 border-t border-border-subtle space-y-4">
                     <div className="flex items-center justify-between">
                         <label className="text-sm font-medium text-text-primary">{language === 'zh' ? '自动保存' : 'Auto Save'}</label>
-                        <Select value={settings.autoSave} onChange={(value) => setSettings({ ...settings, autoSave: value as any })} options={[{ value: 'off', label: 'Off' }, { value: 'afterDelay', label: 'After Delay' }, { value: 'onFocusChange', label: 'On Focus Change' }]} className="w-48" />
+                        <Select value={settings.autoSave} onChange={(value) => setSettings({ ...settings, autoSave: value as any })} options={[{ value: 'off', label: 'Off' }, { value: 'afterDelay', label: language === 'zh' ? '延迟后' : 'After Delay' }, { value: 'onFocusChange', label: language === 'zh' ? '失去焦点时' : 'On Focus Change' }]} className="w-48" />
                     </div>
+                    {settings.autoSave === 'afterDelay' && (
+                        <div className="flex items-center justify-between animate-fade-in">
+                            <label className="text-sm text-text-secondary">{language === 'zh' ? '自动保存延迟 (ms)' : 'Auto Save Delay (ms)'}</label>
+                            <Input type="number" value={settings.autoSaveDelay} onChange={(e) => setSettings({ ...settings, autoSaveDelay: parseInt(e.target.value) || 1000 })} min={500} max={10000} step={500} className="w-32" />
+                        </div>
+                    )}
                 </div>
             </section>
 
@@ -112,14 +118,25 @@ export function EditorSettings({ settings, setSettings, language }: EditorSettin
                 </div>
 
                 {settings.completionEnabled && (
-                    <div className="grid grid-cols-2 gap-6 pt-2 animate-fade-in">
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium text-text-primary">{language === 'zh' ? '触发延迟 (ms)' : 'Trigger Delay (ms)'}</label>
-                            <Input type="number" value={settings.completionDebounceMs} onChange={(e) => setSettings({ ...settings, completionDebounceMs: parseInt(e.target.value) || 150 })} min={50} max={1000} step={50} />
+                    <div className="space-y-4 pt-2 animate-fade-in">
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-text-primary">{language === 'zh' ? '触发延迟 (ms)' : 'Trigger Delay (ms)'}</label>
+                                <Input type="number" value={settings.completionDebounceMs} onChange={(e) => setSettings({ ...settings, completionDebounceMs: parseInt(e.target.value) || 150 })} min={50} max={1000} step={50} />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-text-primary">{language === 'zh' ? '最大 Token 数' : 'Max Tokens'}</label>
+                                <Input type="number" value={settings.completionMaxTokens} onChange={(e) => setSettings({ ...settings, completionMaxTokens: parseInt(e.target.value) || 256 })} min={64} max={1024} step={64} />
+                            </div>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-text-primary">{language === 'zh' ? '最大 Token 数' : 'Max Tokens'}</label>
-                            <Input type="number" value={settings.completionMaxTokens} onChange={(e) => setSettings({ ...settings, completionMaxTokens: parseInt(e.target.value) || 256 })} min={64} max={1024} step={64} />
+                            <label className="text-sm font-medium text-text-primary">{language === 'zh' ? '触发字符' : 'Trigger Characters'}</label>
+                            <Input 
+                                value={settings.completionTriggerChars.join(' ')} 
+                                onChange={(e) => setSettings({ ...settings, completionTriggerChars: e.target.value.split(' ').filter(c => c.length > 0) })} 
+                                placeholder=". ( { [ ..."
+                            />
+                            <p className="text-xs text-text-muted">{language === 'zh' ? '用空格分隔触发字符' : 'Separate trigger characters with spaces'}</p>
                         </div>
                     </div>
                 )}
@@ -143,6 +160,28 @@ export function EditorSettings({ settings, setSettings, language }: EditorSettin
                 </div>
                 <div className="pt-2">
                     <Switch label={language === 'zh' ? '光标闪烁' : 'Cursor Blink'} checked={advancedConfig.terminal.cursorBlink} onChange={(e) => { const newConfig = { ...advancedConfig, terminal: { ...advancedConfig.terminal, cursorBlink: e.target.checked } }; setAdvancedConfig(newConfig); saveEditorConfig(newConfig) }} />
+                </div>
+            </section>
+
+            {/* Performance Settings */}
+            <section className="space-y-4">
+                <h4 className="flex items-center gap-2 text-sm font-medium text-text-secondary mb-4 uppercase tracking-wider text-xs">
+                    <Settings2 className="w-4 h-4" />
+                    {language === 'zh' ? '性能与限制' : 'Performance & Limits'}
+                </h4>
+                <div className="p-5 bg-surface/30 rounded-xl border border-border-subtle space-y-4">
+                    <div className="grid grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-text-primary">{language === 'zh' ? '大文件警告阈值 (MB)' : 'Large File Warning (MB)'}</label>
+                            <Input type="number" value={settings.largeFileWarningThresholdMB} onChange={(e) => setSettings({ ...settings, largeFileWarningThresholdMB: parseFloat(e.target.value) || 5 })} min={1} max={50} step={1} />
+                            <p className="text-xs text-text-muted">{language === 'zh' ? '超过此大小的文件将显示警告' : 'Files larger than this will show a warning'}</p>
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-text-primary">{language === 'zh' ? '命令执行超时 (秒)' : 'Command Timeout (sec)'}</label>
+                            <Input type="number" value={settings.commandTimeoutMs / 1000} onChange={(e) => setSettings({ ...settings, commandTimeoutMs: (parseInt(e.target.value) || 30) * 1000 })} min={10} max={300} step={10} />
+                            <p className="text-xs text-text-muted">{language === 'zh' ? 'Agent 执行命令的最大等待时间' : 'Max wait time for Agent command execution'}</p>
+                        </div>
+                    </div>
                 </div>
             </section>
         </div>

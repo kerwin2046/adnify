@@ -266,6 +266,7 @@ export interface ElectronAPI {
 
   // ✅ Security Management - 安全管理接口
   getAuditLogs: (limit?: number) => Promise<AuditLog[]>
+  clearAuditLogs: () => Promise<boolean>
   getPermissions: () => Promise<Record<string, string>>
   resetPermissions: () => Promise<boolean>
 

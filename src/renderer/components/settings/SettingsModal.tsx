@@ -45,15 +45,19 @@ export default function SettingsModal() {
         fontSize: editorConfig.fontSize,
         tabSize: editorConfig.tabSize,
         wordWrap: editorConfig.wordWrap,
-        lineNumbers: 'on',
+        lineNumbers: editorConfig.lineNumbers,
         minimap: editorConfig.minimap,
-        bracketPairColorization: true,
-        formatOnSave: true,
-        autoSave: 'off',
+        bracketPairColorization: editorConfig.bracketPairColorization,
+        formatOnSave: editorConfig.formatOnSave,
+        autoSave: editorConfig.autoSave,
+        autoSaveDelay: editorConfig.autoSaveDelay,
         theme: 'adnify-dark',
         completionEnabled: editorConfig.ai.completionEnabled,
         completionDebounceMs: editorConfig.performance.completionDebounceMs,
         completionMaxTokens: editorConfig.ai.completionMaxTokens,
+        completionTriggerChars: editorConfig.ai.completionTriggerChars,
+        largeFileWarningThresholdMB: editorConfig.performance.largeFileWarningThresholdMB,
+        commandTimeoutMs: editorConfig.performance.commandTimeoutMs,
     })
 
     // Sync store state to local state
@@ -107,15 +111,23 @@ export default function SettingsModal() {
             fontSize: editorSettings.fontSize,
             tabSize: editorSettings.tabSize,
             wordWrap: editorSettings.wordWrap,
+            lineNumbers: editorSettings.lineNumbers,
             minimap: editorSettings.minimap,
+            bracketPairColorization: editorSettings.bracketPairColorization,
+            formatOnSave: editorSettings.formatOnSave,
+            autoSave: editorSettings.autoSave,
+            autoSaveDelay: editorSettings.autoSaveDelay,
             ai: {
                 ...getEditorConfig().ai,
                 completionEnabled: editorSettings.completionEnabled,
                 completionMaxTokens: editorSettings.completionMaxTokens,
+                completionTriggerChars: editorSettings.completionTriggerChars,
             },
             performance: {
                 ...getEditorConfig().performance,
                 completionDebounceMs: editorSettings.completionDebounceMs,
+                largeFileWarningThresholdMB: editorSettings.largeFileWarningThresholdMB,
+                commandTimeoutMs: editorSettings.commandTimeoutMs,
             }
         }
         saveEditorConfig(newEditorConfig)

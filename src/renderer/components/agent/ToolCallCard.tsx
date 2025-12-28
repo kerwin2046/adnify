@@ -109,15 +109,15 @@ const ToolCallCard = memo(function ToolCallCard({
 
   // 渲染 Skeleton 占位符
   const renderSkeleton = () => (
-      <div className="min-h-[100px] p-4 opacity-50 select-none flex flex-col gap-3">
-          {[...Array(3)].map((_, i) => (
+      <div className="min-h-[160px] p-4 opacity-60 select-none flex flex-col gap-4">
+          {[...Array(5)].map((_, i) => (
               <div key={i} className="flex gap-3 items-center">
-                  <div className="w-2 h-2 rounded-full bg-white/10 animate-pulse shrink-0" />
+                  <div className="w-2 h-2 rounded-full bg-white/20 animate-pulse shrink-0" />
                   <div className="flex-1 space-y-2">
                       <div 
-                        className="h-2.5 bg-white/10 rounded-sm animate-pulse" 
+                        className="h-2.5 bg-white/20 rounded-sm animate-pulse" 
                         style={{ 
-                            width: `${Math.max(40, 90 - (i * 20))}%`, 
+                            width: `${Math.max(30, 90 - (i * 15))}%`, 
                             animationDelay: `${i * 100}ms` 
                         }} 
                       />
@@ -129,8 +129,8 @@ const ToolCallCard = memo(function ToolCallCard({
 
   // 渲染不同类型的预览内容
   const renderPreview = () => {
-    // 如果不在显示内容状态且不是正在运行/流式传输（需要实时显示），则显示 Skeleton
-    if (!showContent && !isRunning && !isStreaming) {
+    // 动画期间（showContent 为 false）显示 Skeleton，无论状态如何，保证展开动画流畅
+    if (!showContent) {
         return <div className="bg-black/20 rounded-md border border-white/5 overflow-hidden">{renderSkeleton()}</div>
     }
 

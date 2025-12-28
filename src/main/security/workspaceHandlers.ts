@@ -7,6 +7,7 @@ import { logger } from '@shared/utils/Logger'
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { promises as fsPromises } from 'fs'
 import { setupFileWatcher, FileWatcherEvent } from './fileWatcher'
+import { securityManager } from './securityModule'
 
 // 窗口管理上下文类型
 export interface WindowManagerContext {
@@ -63,6 +64,9 @@ export function registerWorkspaceHandlers(
         windowManager.setWindowWorkspace(webContentsId, [folderPath])
       }
 
+      // 更新安全模块的工作区路径
+      securityManager.setWorkspacePath(folderPath)
+
       store.set('lastWorkspacePath', folderPath)
       store.set('lastWorkspaceSession', { configPath: null, roots: [folderPath] })
       addRecentWorkspace(folderPath)
@@ -118,6 +122,9 @@ export function registerWorkspaceHandlers(
       if (windowManager?.setWindowWorkspace) {
         windowManager.setWindowWorkspace(webContentsId, roots)
       }
+
+      // 更新安全模块的工作区路径
+      securityManager.setWorkspacePath(roots[0] || null)
 
       const session = { configPath: targetPath.endsWith('.adnify-workspace') ? targetPath : null, roots }
       store.set('lastWorkspaceSession', session)
@@ -179,6 +186,9 @@ export function registerWorkspaceHandlers(
       if (windowManager?.setWindowWorkspace && session.roots.length > 0) {
         windowManager.setWindowWorkspace(webContentsId, session.roots)
       }
+
+      // 更新安全模块的工作区路径
+      securityManager.setWorkspacePath(session.roots[0] || null)
       
       // 自动启动文件监听
       setupFileWatcher(getWorkspaceSessionFn, (data: FileWatcherEvent) => {
@@ -197,6 +207,9 @@ export function registerWorkspaceHandlers(
       if (windowManager?.setWindowWorkspace) {
         windowManager.setWindowWorkspace(webContentsId, [legacyPath])
       }
+
+      // 更新安全模块的工作区路径
+      securityManager.setWorkspacePath(legacyPath)
       
       setupFileWatcher(getWorkspaceSessionFn, (data: FileWatcherEvent) => {
         const win = getMainWindowFn()
@@ -218,6 +231,9 @@ export function registerWorkspaceHandlers(
     if (windowManager?.setWindowWorkspace) {
       windowManager.setWindowWorkspace(webContentsId, roots)
     }
+
+    // 更新安全模块的工作区路径
+    securityManager.setWorkspacePath(roots[0] || null)
 
     store.set('lastWorkspacePath', roots[0])
     store.set('lastWorkspaceSession', { configPath: null, roots })

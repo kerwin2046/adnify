@@ -3,9 +3,14 @@
  * 提供大文件的分块加载、虚拟滚动支持
  */
 
-// 文件大小阈值（字节）
-const LARGE_FILE_THRESHOLD = 1024 * 1024 // 1MB
-const VERY_LARGE_FILE_THRESHOLD = 5 * 1024 * 1024 // 5MB
+import { getEditorConfig } from '@renderer/config/editorConfig'
+
+// 文件大小阈值（字节）- 从配置获取
+function getLargeFileThreshold(): number {
+  const config = getEditorConfig()
+  return (config.performance.largeFileWarningThresholdMB || 5) * 1024 * 1024
+}
+
 const CHUNK_SIZE = 64 * 1024 // 64KB per chunk
 
 export interface FileChunk {
@@ -29,14 +34,16 @@ export interface LargeFileInfo {
  * 检查文件是否为大文件
  */
 export function isLargeFile(content: string): boolean {
-  return content.length > LARGE_FILE_THRESHOLD
+  const threshold = getLargeFileThreshold()
+  return content.length > threshold * 0.2 // 20% of threshold as "large"
 }
 
 /**
  * 检查文件是否为超大文件
  */
 export function isVeryLargeFile(content: string): boolean {
-  return content.length > VERY_LARGE_FILE_THRESHOLD
+  const threshold = getLargeFileThreshold()
+  return content.length > threshold
 }
 
 /**
@@ -45,13 +52,14 @@ export function isVeryLargeFile(content: string): boolean {
 export function getFileInfo(path: string, content: string): LargeFileInfo {
   const size = content.length
   const lineCount = content.split('\n').length
+  const threshold = getLargeFileThreshold()
   
   return {
     path,
     size,
     lineCount,
-    isLarge: size > LARGE_FILE_THRESHOLD,
-    isVeryLarge: size > VERY_LARGE_FILE_THRESHOLD,
+    isLarge: size > threshold * 0.2,
+    isVeryLarge: size > threshold,
   }
 }
 

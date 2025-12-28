@@ -30,10 +30,14 @@ export interface EditorSettingsState {
     bracketPairColorization: boolean
     formatOnSave: boolean
     autoSave: 'off' | 'afterDelay' | 'onFocusChange'
+    autoSaveDelay: number
     theme: string
     completionEnabled: boolean
     completionDebounceMs: number
     completionMaxTokens: number
+    completionTriggerChars: string[]
+    largeFileWarningThresholdMB: number
+    commandTimeoutMs: number
 }
 
 export interface EditorSettingsProps {
