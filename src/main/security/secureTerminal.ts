@@ -385,6 +385,7 @@ export function registerSecureTerminalHandlers(
 
   // Terminal instances storage
   const terminals = new Map<string, any>() // IPty instances
+  const MAX_TERMINALS = 10 // 最大终端数量限制
   let pty: any = null
 
   // Try to load node-pty
@@ -408,6 +409,12 @@ export function registerSecureTerminalHandlers(
 
     if (!pty) {
       return { success: false, error: 'node-pty not available' }
+    }
+
+    // 检查终端数量限制
+    if (terminals.size >= MAX_TERMINALS && !terminals.has(id)) {
+      logger.security.warn(`[Terminal] Max terminals (${MAX_TERMINALS}) reached, rejecting new terminal`)
+      return { success: false, error: `Maximum number of terminals (${MAX_TERMINALS}) reached` }
     }
 
     // 限制只能在工作区内使用终端

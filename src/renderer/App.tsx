@@ -21,6 +21,8 @@ import { keybindingService } from './services/keybindingService'
 import { registerCoreCommands } from './config/commands'
 import { LAYOUT_LIMITS } from '@shared/constants'
 import { startupMetrics } from '@shared/utils/startupMetrics'
+import { useWindowTitle } from './hooks/useWindowTitle'
+import { removeFileFromTypeService } from './services/monacoTypeService'
 
 // 记录 App 模块加载时间
 startupMetrics.mark('app-module-loaded')
@@ -78,6 +80,9 @@ function AppContent() {
     showCommandPalette, setShowCommandPalette
   } = useStore()
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false)
+
+  // 窗口标题管理
+  useWindowTitle()
 
   // 引导状态
   const [showOnboarding, setShowOnboarding] = useState(false)
@@ -253,6 +258,12 @@ function AppContent() {
   // 监听文件变化，自动刷新已打开的文件
   useEffect(() => {
     const unsubscribe = window.electronAPI.onFileChanged(async (event) => {
+      // 处理文件删除事件 - 清理 Monaco extraLib
+      if (event.event === 'delete') {
+        removeFileFromTypeService(event.path)
+        return
+      }
+      
       if (event.event !== 'update') return // 只处理文件修改事件
 
       const { openFiles, reloadFileFromDisk } = useStore.getState()

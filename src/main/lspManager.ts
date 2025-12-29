@@ -137,6 +137,11 @@ class LspManager {
   private documentVersions: Map<string, number> = new Map() // 启用文档版本管理
   private diagnosticsCache: Map<string, any[]> = new Map()
   private startingServers: Set<string> = new Set()
+  
+  // 空闲关闭配置
+  private serverLastActivity: Map<string, number> = new Map()
+  private idleCheckInterval: NodeJS.Timeout | null = null
+  private static readonly IDLE_TIMEOUT_MS = 5 * 60 * 1000 // 5 分钟无活动则关闭
 
   // 自动重启配置
   private static readonly MAX_CRASH_COUNT = 3
@@ -148,6 +153,30 @@ class LspManager {
         this.languageToServer.set(lang, config.name)
       }
     }
+    
+    // 启动空闲检查定时器
+    this.startIdleCheck()
+  }
+
+  private startIdleCheck() {
+    if (this.idleCheckInterval) return
+    
+    this.idleCheckInterval = setInterval(() => {
+      const now = Date.now()
+      for (const [key, lastActivity] of this.serverLastActivity) {
+        if (now - lastActivity > LspManager.IDLE_TIMEOUT_MS) {
+          const instance = this.servers.get(key)
+          if (instance && instance.initialized) {
+            logger.lsp.info(`[LSP ${key}] Stopping idle server (inactive for ${Math.round((now - lastActivity) / 1000)}s)`)
+            this.stopServerByKey(key)
+          }
+        }
+      }
+    }, 60000) // 每分钟检查一次
+  }
+
+  private updateActivity(key: string) {
+    this.serverLastActivity.set(key, Date.now())
   }
 
   private getInstanceKey(serverName: string, workspacePath: string): string {
@@ -334,6 +363,9 @@ class LspManager {
   }
 
   sendRequest(key: string, method: string, params: any, timeoutMs = 30000): Promise<any> {
+    // 更新活动时间
+    this.updateActivity(key)
+    
     return new Promise((resolve, reject) => {
       const instance = this.servers.get(key)
       if (!instance?.process?.stdin || !instance.process.stdin.writable) {
@@ -362,6 +394,9 @@ class LspManager {
   }
 
   sendNotification(key: string, method: string, params: any): void {
+    // 更新活动时间
+    this.updateActivity(key)
+    
     const instance = this.servers.get(key)
     if (!instance?.process?.stdin || !instance.process.stdin.writable) return
     const body = JSON.stringify({ jsonrpc: '2.0', method, params })
@@ -416,9 +451,15 @@ class LspManager {
     } catch { }
     instance.process.kill()
     this.servers.delete(key)
+    this.serverLastActivity.delete(key)
   }
 
   async stopAllServers(): Promise<void> {
+    // 停止空闲检查
+    if (this.idleCheckInterval) {
+      clearInterval(this.idleCheckInterval)
+      this.idleCheckInterval = null
+    }
     await Promise.all(Array.from(this.servers.keys()).map(key => this.stopServerByKey(key)))
   }
 

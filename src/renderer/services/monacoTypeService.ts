@@ -208,6 +208,22 @@ export function clearExtraLibs() {
 }
 
 /**
+ * 移除单个文件的 extraLib（文件删除时调用）
+ */
+export function removeFileFromTypeService(filePath: string) {
+  if (!monacoInstance) return
+
+  const uri = monacoInstance.Uri.file(filePath)
+  const uriString = uri.toString()
+
+  const disposable = extraLibCache.get(uriString)
+  if (disposable) {
+    disposable.dispose()
+    extraLibCache.delete(uriString)
+  }
+}
+
+/**
  * 获取 Monaco 实例
  */
 export function getMonacoInstance() {

@@ -33,6 +33,7 @@ interface MeasurementRecord {
 interface PerformanceConfig {
   enabled: boolean
   maxHistoryPerMetric: number
+  maxMetrics: number // 最大指标数量，防止无限增长
   slowThresholds: Record<MetricCategory, number>
   reportInterval: number // 毫秒
 }
@@ -41,6 +42,7 @@ class PerformanceMonitorClass {
   private config: PerformanceConfig = {
     enabled: true,
     maxHistoryPerMetric: 100,
+    maxMetrics: 500, // 最大 500 个不同的指标
     slowThresholds: {
       llm: 5000,      // LLM 调用超过 5s 视为慢
       tool: 3000,     // 工具执行超过 3s 视为慢
@@ -127,6 +129,11 @@ class PerformanceMonitorClass {
     // 更新指标
     let metric = this.metrics.get(key)
     if (!metric) {
+      // 检查是否超过最大指标数量，如果超过则清理最旧的
+      if (this.metrics.size >= this.config.maxMetrics) {
+        this.evictOldestMetric()
+      }
+      
       metric = {
         name,
         category,
@@ -297,6 +304,26 @@ class PerformanceMonitorClass {
     this.metrics.clear()
     this.history.clear()
     this.activeTimers.clear()
+  }
+
+  /**
+   * 淘汰最旧的指标（LRU）
+   */
+  private evictOldestMetric(): void {
+    let oldestKey: string | null = null
+    let oldestTime = Infinity
+
+    for (const [key, metric] of this.metrics) {
+      if (metric.lastTimestamp < oldestTime) {
+        oldestTime = metric.lastTimestamp
+        oldestKey = key
+      }
+    }
+
+    if (oldestKey) {
+      this.metrics.delete(oldestKey)
+      this.history.delete(oldestKey)
+    }
   }
 
   /**
