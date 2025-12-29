@@ -111,19 +111,19 @@ export default defineConfig({
 			output: {
 				// 代码分割配置 - 优化首屏加载
 				manualChunks: {
-					// Monaco Editor 单独打包（最大的依赖）
-					'monaco-editor': ['monaco-editor'],
-					// React 相关
+					// Monaco Editor 单独打包（最大的依赖）- 延迟加载
+					'monaco-editor': ['monaco-editor', '@monaco-editor/react'],
+					// React 相关 - 核心依赖，优先加载
 					'react-vendor': ['react', 'react-dom'],
-					// 状态管理
+					// 状态管理 - 核心依赖
 					'state': ['zustand'],
-					// UI 图标
+					// UI 图标 - 可延迟
 					'icons': ['lucide-react'],
 					// 终端相关 - 懒加载优化
 					'terminal': ['@xterm/xterm', '@xterm/addon-fit', '@xterm/addon-webgl', '@xterm/addon-web-links'],
 					// Markdown 渲染 - 懒加载优化
 					'markdown': ['react-markdown', 'react-syntax-highlighter'],
-					// 动画库
+					// 动画库 - 可延迟
 					'animation': ['framer-motion'],
 				},
 			},
@@ -135,6 +135,8 @@ export default defineConfig({
 		target: 'esnext',
 		// 启用 CSS 代码分割
 		cssCodeSplit: true,
+		// 启用源码映射（生产环境可关闭）
+		sourcemap: false,
 	},
 	optimizeDeps: {
 		include: ['monaco-editor']

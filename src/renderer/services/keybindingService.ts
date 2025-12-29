@@ -1,5 +1,6 @@
 import { logger } from '@utils/Logger'
 
+const LOCAL_STORAGE_KEY = 'adnify-keybindings'
 
 export interface Command {
     id: string
@@ -107,10 +108,27 @@ class KeybindingService {
     }
 
     private async loadOverrides() {
+        // 优先从 localStorage 读取（快速）
+        try {
+            const localData = localStorage.getItem(LOCAL_STORAGE_KEY)
+            if (localData) {
+                const parsed = JSON.parse(localData)
+                this.overrides = new Map(Object.entries(parsed))
+                // 异步同步到文件（不阻塞）
+                window.electronAPI.setSetting('keybindings', parsed).catch(() => {})
+                return
+            }
+        } catch (e) {
+            // localStorage 读取失败，继续从文件读取
+        }
+        
+        // 从文件读取
         try {
             const saved = await window.electronAPI.getSetting('keybindings') as Record<string, string>
             if (saved) {
                 this.overrides = new Map(Object.entries(saved))
+                // 同步到 localStorage
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(saved))
             }
         } catch (e) {
             logger.system.error('Failed to load keybindings:', e)
@@ -118,8 +136,15 @@ class KeybindingService {
     }
 
     private async saveOverrides() {
+        const obj = Object.fromEntries(this.overrides)
+        // 同步写入 localStorage（快速）
         try {
-            const obj = Object.fromEntries(this.overrides)
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(obj))
+        } catch (e) {
+            logger.system.error('Failed to save keybindings to localStorage:', e)
+        }
+        // 异步写入文件（持久化）
+        try {
             await window.electronAPI.setSetting('keybindings', obj)
         } catch (e) {
             logger.system.error('Failed to save keybindings:', e)

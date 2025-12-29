@@ -207,6 +207,9 @@ export const builtinThemes: Theme[] = [
 ]
 
 // 主题管理器
+const LOCAL_STORAGE_THEME_KEY = 'adnify-theme-id'
+const LOCAL_STORAGE_CUSTOM_THEMES_KEY = 'adnify-custom-themes'
+
 class ThemeManager {
   private currentTheme: Theme = builtinThemes[0]
   private customThemes: Theme[] = []
@@ -214,22 +217,46 @@ class ThemeManager {
   private initialized = false
 
   constructor() {
-    // 不在构造函数中加载，等待 init() 调用
+    // 从 localStorage 快速恢复主题（同步，避免闪烁）
+    try {
+      const savedThemeId = localStorage.getItem(LOCAL_STORAGE_THEME_KEY)
+      const savedCustomThemes = localStorage.getItem(LOCAL_STORAGE_CUSTOM_THEMES_KEY)
+      
+      if (savedCustomThemes) {
+        this.customThemes = JSON.parse(savedCustomThemes)
+      }
+      
+      if (savedThemeId) {
+        const theme = this.getThemeById(savedThemeId)
+        if (theme) {
+          this.currentTheme = theme
+          // 立即应用主题（避免白屏）
+          this.applyTheme(theme)
+        }
+      }
+    } catch (e) {
+      // 忽略 localStorage 错误
+    }
   }
 
   async loadFromConfig() {
     try {
-      const savedThemeId = await window.electronAPI.getSetting('themeId')
-      const savedCustomThemes = await window.electronAPI.getSetting('customThemes')
+      // 并行读取主题配置
+      const [savedThemeId, savedCustomThemes] = await Promise.all([
+        window.electronAPI.getSetting('themeId'),
+        window.electronAPI.getSetting('customThemes'),
+      ])
 
       if (savedCustomThemes && Array.isArray(savedCustomThemes)) {
         this.customThemes = savedCustomThemes as Theme[]
+        localStorage.setItem(LOCAL_STORAGE_CUSTOM_THEMES_KEY, JSON.stringify(savedCustomThemes))
       }
 
       if (savedThemeId && typeof savedThemeId === 'string') {
         const theme = this.getThemeById(savedThemeId)
         if (theme) {
           this.currentTheme = theme
+          localStorage.setItem(LOCAL_STORAGE_THEME_KEY, savedThemeId)
         }
       }
     } catch (e) {
@@ -238,6 +265,14 @@ class ThemeManager {
   }
 
   private saveToConfig() {
+    // 同步写入 localStorage
+    try {
+      localStorage.setItem(LOCAL_STORAGE_THEME_KEY, this.currentTheme.id)
+      localStorage.setItem(LOCAL_STORAGE_CUSTOM_THEMES_KEY, JSON.stringify(this.customThemes))
+    } catch (e) {
+      // 忽略 localStorage 错误
+    }
+    // 异步写入文件
     try {
       window.electronAPI.setSetting('themeId', this.currentTheme.id)
       window.electronAPI.setSetting('customThemes', this.customThemes)

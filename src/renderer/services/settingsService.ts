@@ -237,10 +237,28 @@ function cleanProviderConfigs(
 
 // ============ 设置服务类 ============
 
+const LOCAL_STORAGE_KEY = 'adnify-app-settings'
+
 class SettingsService {
   private cache: AppSettings | null = null
 
   async loadAll(): Promise<AppSettings> {
+    // 优先从 localStorage 读取（快速）
+    try {
+      const localData = localStorage.getItem(LOCAL_STORAGE_KEY)
+      if (localData) {
+        const settings = JSON.parse(localData) as Partial<AppSettings>
+        const merged = this.mergeSettings(settings)
+        this.cache = merged
+        // 异步从文件同步（不阻塞）
+        this.syncFromFile().catch(() => {})
+        return merged
+      }
+    } catch (e) {
+      // localStorage 读取失败，继续从文件读取
+    }
+
+    // 从文件读取
     try {
       const settings = (await window.electronAPI.getSetting('app-settings')) as Partial<AppSettings> | null
 
@@ -248,25 +266,65 @@ class SettingsService {
         return this.getDefaultSettings()
       }
 
-      const mergedProviderConfigs = this.mergeProviderConfigs(settings.providerConfigs)
-      const llmConfig = this.mergeLLMConfig(settings.llmConfig, mergedProviderConfigs)
-
-      const merged: AppSettings = {
-        llmConfig,
-        language: settings.language || 'en',
-        autoApprove: { ...defaultAutoApprove, ...settings.autoApprove },
-        promptTemplateId: settings.promptTemplateId,
-        agentConfig: { ...defaultAgentConfig, ...settings.agentConfig },
-        providerConfigs: mergedProviderConfigs,
-        aiInstructions: settings.aiInstructions || '',
-        onboardingCompleted: settings.onboardingCompleted ?? false,
-      }
-
+      const merged = this.mergeSettings(settings)
       this.cache = merged
+      // 同步到 localStorage
+      this.saveToLocalStorage(merged)
       return merged
     } catch (e) {
       logger.settings.error('[SettingsService] Failed to load settings:', e)
       return this.getDefaultSettings()
+    }
+  }
+
+  private mergeSettings(settings: Partial<AppSettings>): AppSettings {
+    const mergedProviderConfigs = this.mergeProviderConfigs(settings.providerConfigs)
+    const llmConfig = this.mergeLLMConfig(settings.llmConfig, mergedProviderConfigs)
+
+    return {
+      llmConfig,
+      language: settings.language || 'en',
+      autoApprove: { ...defaultAutoApprove, ...settings.autoApprove },
+      promptTemplateId: settings.promptTemplateId,
+      agentConfig: { ...defaultAgentConfig, ...settings.agentConfig },
+      providerConfigs: mergedProviderConfigs,
+      aiInstructions: settings.aiInstructions || '',
+      onboardingCompleted: settings.onboardingCompleted ?? false,
+    }
+  }
+
+  private async syncFromFile(): Promise<void> {
+    try {
+      const settings = (await window.electronAPI.getSetting('app-settings')) as Partial<AppSettings> | null
+      if (settings) {
+        const merged = this.mergeSettings(settings)
+        this.cache = merged
+        this.saveToLocalStorage(merged)
+      }
+    } catch (e) {
+      // 忽略同步错误
+    }
+  }
+
+  private saveToLocalStorage(settings: AppSettings): void {
+    try {
+      // 只保存必要的数据，避免存储过大
+      const toSave = {
+        llmConfig: {
+          provider: settings.llmConfig.provider,
+          model: settings.llmConfig.model,
+        },
+        language: settings.language,
+        autoApprove: settings.autoApprove,
+        promptTemplateId: settings.promptTemplateId,
+        agentConfig: settings.agentConfig,
+        providerConfigs: settings.providerConfigs,
+        aiInstructions: settings.aiInstructions,
+        onboardingCompleted: settings.onboardingCompleted,
+      }
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toSave))
+    } catch (e) {
+      // 忽略 localStorage 错误
     }
   }
 
@@ -286,8 +344,12 @@ class SettingsService {
         onboardingCompleted: settings.onboardingCompleted,
       }
 
-      await window.electronAPI.setSetting('app-settings', cleaned)
+      // 同步写入 localStorage
+      this.saveToLocalStorage(settings)
       this.cache = settings
+
+      // 异步写入文件
+      await window.electronAPI.setSetting('app-settings', cleaned)
 
       logger.settings.info('[SettingsService] Settings saved')
     } catch (e) {

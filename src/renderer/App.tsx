@@ -1,11 +1,9 @@
 import { logger } from '@utils/Logger'
-import { useEffect, useState, useCallback, lazy, Suspense } from 'react'
+import { useEffect, useState, useCallback, lazy, Suspense, memo } from 'react'
 import { useStore } from './store'
 import TitleBar from './components/layout/TitleBar'
 import { Sidebar } from '@components/sidebar'
-import Editor from './components/editor/Editor'
 import { ChatPanel } from './components/agent'
-import TerminalPanel from './components/panels/TerminalPanel'
 import ActivityBar from './components/layout/ActivityBar'
 import StatusBar from './components/layout/StatusBar'
 import { ToastProvider, useToast, setGlobalToast } from './components/common/ToastProvider'
@@ -22,8 +20,14 @@ import { initDiagnosticsListener } from './services/diagnosticsStore'
 import { keybindingService } from './services/keybindingService'
 import { registerCoreCommands } from './config/commands'
 import { LAYOUT_LIMITS } from '@shared/constants'
+import { startupMetrics } from '@shared/utils/startupMetrics'
+
+// 记录 App 模块加载时间
+startupMetrics.mark('app-module-loaded')
 
 // 懒加载大组件以优化首屏性能
+const Editor = lazy(() => import('./components/editor/Editor'))
+const TerminalPanel = lazy(() => import('./components/panels/TerminalPanel'))
 const ComposerPanel = lazy(() => import('./components/panels/ComposerPanel'))
 const OnboardingWizard = lazy(() => import('./components/dialogs/OnboardingWizard'))
 const SettingsModal = lazy(() => import('./components/settings/SettingsModal'))
@@ -34,6 +38,25 @@ const AboutDialog = lazy(() => import('./components/dialogs/AboutDialog'))
 
   // 暴露 store 给插件系统
   ; (window as any).__ADNIFY_STORE__ = { getState: () => useStore.getState() }
+
+// 编辑器骨架屏（懒加载时显示）
+const EditorSkeleton = memo(() => (
+  <div className="h-full flex flex-col bg-background">
+    {/* Tab bar skeleton */}
+    <div className="h-9 border-b border-border-subtle flex items-center px-2 gap-1">
+      <div className="h-6 w-24 bg-surface rounded animate-pulse" />
+      <div className="h-6 w-20 bg-surface/50 rounded animate-pulse" />
+    </div>
+    {/* Editor area skeleton */}
+    <div className="flex-1 p-4 space-y-2">
+      <div className="h-4 w-3/4 bg-surface/30 rounded animate-pulse" />
+      <div className="h-4 w-1/2 bg-surface/30 rounded animate-pulse" />
+      <div className="h-4 w-2/3 bg-surface/30 rounded animate-pulse" />
+      <div className="h-4 w-1/3 bg-surface/30 rounded animate-pulse" />
+    </div>
+  </div>
+))
+EditorSkeleton.displayName = 'EditorSkeleton'
 
 // 初始化全局 Toast 的组件
 function ToastInitializer() {
@@ -73,80 +96,93 @@ function AppContent() {
   // 移除初始 HTML loader
   const removeInitialLoader = useCallback((_status?: string) => {
     const loader = document.getElementById('initial-loader')
+    const root = document.getElementById('root')
     if (loader) {
       loader.classList.add('fade-out')
-      setTimeout(() => loader.remove(), 400)
+      setTimeout(() => loader.remove(), 300)
+    }
+    // 显示 React 应用
+    if (root) {
+      root.classList.add('ready')
     }
   }, [])
 
   useEffect(() => {
     // Load saved settings & restore workspace
-    // Load saved settings & restore workspace
     const loadSettings = async () => {
       try {
-        // 注册核心命令并初始化快捷键服务 (Move this up to ensure it runs)
+        startupMetrics.start('init-total')
+        
+        // 第一阶段：并行初始化独立模块（不互相依赖）
+        startupMetrics.start('init-parallel-1')
+        updateLoaderStatus('Initializing...')
+        
+        // 同步注册命令（非常快，不需要 await）
         registerCoreCommands()
-        await keybindingService.init()
+        
+        // 并行执行：快捷键加载、AgentStore初始化、编辑器配置、主题
+        const [, , ,] = await Promise.all([
+          keybindingService.init(),
+          initializeAgentStore(),
+          initEditorConfig(),
+          themeManager.init(),
+        ])
+        startupMetrics.end('init-parallel-1')
 
-        // 初始化 AgentStore 窗口隔离（确保多窗口不会共享会话）
-        updateLoaderStatus('Initializing window...')
-        await initializeAgentStore()
-
-        // 初始化编辑器配置和主题
-        updateLoaderStatus('Loading configuration...')
-        await initEditorConfig()
-        await themeManager.init()
-
-        // 使用 Store 的 loadSettings 加载所有设置
+        // 第二阶段：加载设置
         updateLoaderStatus('Loading settings...')
+        startupMetrics.start('load-settings')
         const params = new URLSearchParams(window.location.search)
         const isEmptyWindow = params.get('empty') === '1'
 
-        const { loadSettings } = useStore.getState()
-        await loadSettings(isEmptyWindow)
+        // 并行加载 store settings 和主题
+        const [, savedTheme] = await Promise.all([
+          useStore.getState().loadSettings(isEmptyWindow),
+          window.electronAPI.getSetting('currentTheme'),
+        ])
+        startupMetrics.end('load-settings')
 
         // 检查是否需要显示引导
         const { onboardingCompleted, hasExistingConfig } = useStore.getState()
 
-        // 加载保存的主题
-        const savedTheme = await window.electronAPI.getSetting('currentTheme')
+        // 应用保存的主题
         if (savedTheme) {
           const { setTheme } = useStore.getState()
           setTheme(savedTheme as 'adnify-dark' | 'midnight' | 'dawn')
         }
 
-        // Auto-restore workspace (only if not an empty window)
+        // 第三阶段：恢复工作区（仅非空窗口）
         if (!isEmptyWindow) {
           updateLoaderStatus('Restoring workspace...')
+          startupMetrics.start('restore-workspace')
           const workspaceConfig = await window.electronAPI.restoreWorkspace()
           if (workspaceConfig && workspaceConfig.roots && workspaceConfig.roots.length > 0) {
             setWorkspace(workspaceConfig)
 
-            // 并行初始化所有根目录的 .adnify 结构
-            updateLoaderStatus('Initializing workspace roots...')
-            await Promise.all(workspaceConfig.roots.map(root => adnifyDir.initialize(root)))
-
-            // 设置主根目录（默认为第一个）
-            await adnifyDir.setPrimaryRoot(workspaceConfig.roots[0])
-
-            // 初始化检查点服务
-            await checkpointService.init()
-
-            // 初始化诊断监听器
-            initDiagnosticsListener()
-
-            // 重新加载 Agent Store（确保从 .adnify 读取最新数据）
-            await useAgentStore.persist.rehydrate()
-
-            updateLoaderStatus('Loading files...')
-            // 初始显示第一个根目录的文件
-            const items = await window.electronAPI.readDir(workspaceConfig.roots[0])
+            // 并行初始化：.adnify 目录 + 读取文件列表
+            updateLoaderStatus('Loading workspace...')
+            const [, , items] = await Promise.all([
+              Promise.all(workspaceConfig.roots.map(root => adnifyDir.initialize(root))),
+              adnifyDir.setPrimaryRoot(workspaceConfig.roots[0]),
+              window.electronAPI.readDir(workspaceConfig.roots[0]),
+            ])
+            
             setFiles(items)
 
-            // 恢复工作区状态（打开的文件等）
+            // 后台初始化（不阻塞 UI）
+            Promise.all([
+              checkpointService.init(),
+              useAgentStore.persist.rehydrate(),
+            ]).catch(console.error)
+
+            // 初始化诊断监听器（同步，很快）
+            initDiagnosticsListener()
+
+            // 恢复工作区状态
             updateLoaderStatus('Restoring editor state...')
             await restoreWorkspaceState()
           }
+          startupMetrics.end('restore-workspace')
         }
 
         // 注册设置同步监听器（返回清理函数供 useEffect 使用）
@@ -165,20 +201,28 @@ function AppContent() {
         ;(window as any).__settingsUnsubscribe = unsubscribeSettings
 
         updateLoaderStatus('Ready!')
+        startupMetrics.end('init-total')
+        
         // 短暂延迟后移除 loader 并通知主进程显示窗口
         setTimeout(() => {
           removeInitialLoader()
           setIsInitialized(true)
 
-          // 通知主进程：渲染完成，可以显示窗口了
+          // 通知主进程：渲染完成
           window.electronAPI.appReady()
+          
+          // 打印启动性能报告（开发环境）
+          if (process.env.NODE_ENV === 'development') {
+            startupMetrics.mark('app-ready')
+            startupMetrics.printReport()
+          }
 
           const shouldShowOnboarding = onboardingCompleted === false ||
             (onboardingCompleted === undefined && !hasExistingConfig)
           if (shouldShowOnboarding) {
             setShowOnboarding(true)
           }
-        }, 100)
+        }, 50)  // 减少延迟时间
       } catch (error) {
         logger.system.error('Failed to load settings:', error)
         // Even if loading fails, ensure keybindings are registered
@@ -381,11 +425,15 @@ function AppContent() {
             <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
               <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
                 <ErrorBoundary>
-                  <Editor />
+                  <Suspense fallback={<EditorSkeleton />}>
+                    <Editor />
+                  </Suspense>
                 </ErrorBoundary>
               </div>
               <ErrorBoundary>
-                <TerminalPanel />
+                <Suspense fallback={null}>
+                  <TerminalPanel />
+                </Suspense>
               </ErrorBoundary>
             </div>
 

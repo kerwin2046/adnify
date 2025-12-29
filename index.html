@@ -6,6 +6,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/png" href="/icon.png" />
   <title>Adnify</title>
+  
+  <!-- 预加载关键资源 -->
+  <link rel="preload" href="/icon.png" as="image" />
+  <link rel="modulepreload" href="/src/renderer/main.tsx" />
+  
+  <!-- 关键 CSS 内联（避免 FOUC） -->
   <style>
     /* Initial Loader - Premium Deep Space Aesthetic */
     :root {
@@ -29,6 +35,16 @@
       overflow: hidden;
     }
 
+    /* 防止内容闪烁 */
+    #root {
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    #root.ready {
+      opacity: 1;
+    }
+
     #initial-loader {
       position: fixed;
       inset: 0;
@@ -38,7 +54,7 @@
       justify-content: center;
       z-index: 9999;
       opacity: 1;
-      transition: opacity 0.6s cubic-bezier(0.4, 0, 0.2, 1), background 0.6s ease;
+      transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
     #initial-loader.fade-out {
@@ -50,7 +66,7 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      animation: loader-reveal 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+      animation: loader-reveal 0.5s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
     .loader-logo-container {
@@ -141,7 +157,7 @@
       width: 40%;
       background: var(--loader-accent);
       box-shadow: 0 0 10px var(--loader-accent);
-      animation: progress-move 2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+      animation: progress-move 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
     }
 
     .loader-status {
@@ -156,7 +172,7 @@
     @keyframes loader-reveal {
       from {
         opacity: 0;
-        transform: scale(0.95);
+        transform: scale(0.96);
       }
 
       to {
@@ -224,13 +240,13 @@
       <div class="loader-progress-container">
         <div class="loader-progress-bar"></div>
       </div>
-      <div class="loader-status">Initializing system...</div>
+      <div class="loader-status">Initializing...</div>
     </div>
   </div>
 
   <div id="root"></div>
   <script>
-    // Dynamic Theme Adaptation for Initial Loader
+    // Dynamic Theme Adaptation for Initial Loader (同步执行，避免闪烁)
     (function () {
       try {
         const themeId = localStorage.getItem('adnify-theme-id') || 'adnify-dark';

@@ -237,15 +237,10 @@ export const createSettingsSlice: StateCreator<SettingsSlice, [], [], SettingsSl
         editorConfig: getEditorConfig(),
       })
 
-      // 加载自定义 Provider（从 localStorage）
-      await (get() as any).loadCustomProviders()
-
-      if (!isEmptyWindow) {
-        const workspace = await window.electronAPI.restoreWorkspace()
-        if (workspace) {
-          ; (get() as any).setWorkspace(workspace)
-        }
-      }
+      // 加载自定义 Provider（从 localStorage）- 不阻塞
+      ;(get() as any).loadCustomProviders?.().catch(() => {})
+      
+      // 注意：workspace 恢复已移到 App.tsx 中统一处理，避免重复调用
     } catch (e) {
       logger.settings.error('[SettingsSlice] Failed to load settings:', e)
     }

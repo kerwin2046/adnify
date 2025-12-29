@@ -4,50 +4,63 @@
 
 import { ipcMain, BrowserWindow, app } from 'electron'
 
+// 标记是否已注册基础窗口控制
+let basicHandlersRegistered = false
+
 export function registerWindowHandlers(createWindow: (isEmpty?: boolean) => BrowserWindow) {
-  ipcMain.on('window:minimize', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    win?.minimize()
-  })
+  // 基础窗口控制（只注册一次）
+  if (!basicHandlersRegistered) {
+    basicHandlersRegistered = true
+    
+    ipcMain.on('window:minimize', (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      win?.minimize()
+    })
 
-  ipcMain.on('window:maximize', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (win?.isMaximized()) {
-      win.unmaximize()
-    } else {
-      win?.maximize()
-    }
-  })
+    ipcMain.on('window:maximize', (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      if (win?.isMaximized()) {
+        win.unmaximize()
+      } else {
+        win?.maximize()
+      }
+    })
 
-  ipcMain.on('window:close', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    win?.close()
-  })
+    ipcMain.on('window:close', (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      win?.close()
+    })
 
-  ipcMain.on('window:toggleDevTools', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    win?.webContents.toggleDevTools()
-  })
+    ipcMain.on('window:toggleDevTools', (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      win?.webContents.toggleDevTools()
+    })
 
-  // 新增：打开新窗口
+    ipcMain.handle('app:getVersion', () => {
+      return app.getVersion()
+    })
+
+    // 渲染端准备完毕通知
+    ipcMain.on('app:ready', (event) => {
+      const win = BrowserWindow.fromWebContents(event.sender)
+      if (win && !win.isDestroyed()) {
+        // 窗口已经显示，这里只是日志记录
+        console.log('[Window] Renderer ready for window:', win.id)
+      }
+    })
+
+    // 获取当前窗口的唯一标识
+    ipcMain.handle('window:getId', (event) => {
+      return BrowserWindow.fromWebContents(event.sender)?.id
+    })
+  }
+
+  // 新增：打开新窗口（需要 createWindow 函数）
+  // 移除旧的 handler 再注册新的
+  try {
+    ipcMain.removeHandler('window:new')
+  } catch {}
   ipcMain.handle('window:new', () => {
     createWindow(true)
-  })
-
-  ipcMain.handle('app:getVersion', () => {
-    return app.getVersion()
-  })
-
-  // 渲染端准备完毕，显示窗口
-  ipcMain.on('app:ready', (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender)
-    if (win && !win.isDestroyed()) {
-      win.show()
-    }
-  })
-
-  // 获取当前窗口的唯一标识（webContents.id）
-  ipcMain.handle('window:getId', (event) => {
-    return event.sender.id
   })
 }

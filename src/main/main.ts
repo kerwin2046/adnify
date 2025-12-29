@@ -1,17 +1,27 @@
 /**
  * Adnify Main Process
  * 重构后的主进程入口（支持多窗口和安全模块）
+ * 
+ * 启动优化策略：
+ * 1. 窗口立即显示（show: true）+ 骨架屏
+ * 2. 延迟初始化非关键模块
+ * 3. 渲染进程就绪后再执行重型操作
  */
 
 import { logger } from '@shared/utils/Logger'
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, shell, ipcMain } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs'
 import Store from 'electron-store'
-import { registerAllHandlers, cleanupAllHandlers, updateLLMServiceWindow } from './ipc'
-import { lspManager } from './lspManager'
-import { securityManager, updateWhitelist } from './security'
 import { SECURITY_DEFAULTS, WINDOW_DEFAULTS } from '../shared/constants'
+
+// 延迟导入的模块引用
+let registerAllHandlers: typeof import('./ipc').registerAllHandlers
+let cleanupAllHandlers: typeof import('./ipc').cleanupAllHandlers
+let updateLLMServiceWindow: typeof import('./ipc').updateLLMServiceWindow
+let lspManager: typeof import('./lspManager').lspManager
+let securityManager: typeof import('./security').securityManager
+let updateWhitelist: typeof import('./security').updateWhitelist
 
 // 移除硬编码的 SECURITY_DEFAULTS，已从 ../shared/constants 导入
 
@@ -107,6 +117,36 @@ if (!gotTheLock) {
 }
 
 // ==========================================
+// 延迟加载模块（启动优化）
+// ==========================================
+
+let modulesLoaded = false
+
+async function loadDeferredModules() {
+  if (modulesLoaded) return
+  modulesLoaded = true
+  
+  const startTime = Date.now()
+  logger.system.info('[Main] Loading deferred modules...')
+  
+  // 并行加载所有模块
+  const [ipcModule, lspModule, securityModule] = await Promise.all([
+    import('./ipc'),
+    import('./lspManager'),
+    import('./security'),
+  ])
+  
+  registerAllHandlers = ipcModule.registerAllHandlers
+  cleanupAllHandlers = ipcModule.cleanupAllHandlers
+  updateLLMServiceWindow = ipcModule.updateLLMServiceWindow
+  lspManager = lspModule.lspManager
+  securityManager = securityModule.securityManager
+  updateWhitelist = securityModule.updateWhitelist
+  
+  logger.system.info(`[Main] Deferred modules loaded in ${Date.now() - startTime}ms`)
+}
+
+// ==========================================
 // 窗口创建
 // ==========================================
 
@@ -126,17 +166,14 @@ function createWindow(isEmpty: boolean = false) {
     icon: iconPath,
     trafficLightPosition: { x: 15, y: 15 },
     backgroundColor: WINDOW_DEFAULTS.BACKGROUND_COLOR,
-    show: false,
+    show: true,  // 立即显示窗口（配合 HTML 骨架屏实现秒开）
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // 启用 V8 缓存加速
+      v8CacheOptions: 'bypassHeatCheck',
     },
-  })
-
-  // 显示窗口
-  win.once('ready-to-show', () => {
-    win.show()
   })
 
   const windowId = win.id
@@ -145,7 +182,9 @@ function createWindow(isEmpty: boolean = false) {
 
   win.on('focus', () => {
     lastActiveWindow = win
-    updateLLMServiceWindow(win)
+    if (updateLLMServiceWindow) {
+      updateLLMServiceWindow(win)
+    }
   })
 
   win.on('close', async (e) => {
@@ -155,8 +194,8 @@ function createWindow(isEmpty: boolean = false) {
       e.preventDefault()
       logger.system.info('[Main] Last window closing, starting cleanup...')
       try {
-        cleanupAllHandlers()
-        await lspManager.stopAllServers()
+        if (cleanupAllHandlers) cleanupAllHandlers()
+        if (lspManager) await lspManager.stopAllServers()
         logger.system.info('[Main] Cleanup completed')
       } catch (err) {
         logger.system.error('[Main] Cleanup error:', err)
@@ -231,97 +270,126 @@ function createWindow(isEmpty: boolean = false) {
 // 应用生命周期
 // ==========================================
 
-app.whenReady().then(() => {
-  logger.system.info('[Security] 🔒 初始化安全模块...')
+app.whenReady().then(async () => {
+  // 第一阶段：立即创建窗口（秒开体验）
+  const firstWin = createWindow()
+  
+  // 立即注册基础窗口控制 IPC（同步导入，非常快）
+  const { registerWindowHandlers } = await import('./ipc/window')
+  registerWindowHandlers(createWindow)
+  
+  // 注册最小化的 IPC（app:ready 通知）
+  registerMinimalIPC()
+  
+  // 第二阶段：异步加载其他模块（不阻塞窗口显示）
+  setImmediate(async () => {
+    await loadDeferredModules()
+    
+    logger.system.info('[Security] 🔒 初始化安全模块...')
 
-  const securityConfig = mainStore.get('securitySettings', {
-    enablePermissionConfirm: true,
-    enableAuditLog: true,
-    strictWorkspaceMode: true,
-    allowedShellCommands: [...SECURITY_DEFAULTS.SHELL_COMMANDS],
-    allowedGitSubcommands: [...SECURITY_DEFAULTS.GIT_SUBCOMMANDS],
-  }) as any
+    const securityConfig = mainStore.get('securitySettings', {
+      enablePermissionConfirm: true,
+      enableAuditLog: true,
+      strictWorkspaceMode: true,
+      allowedShellCommands: [...SECURITY_DEFAULTS.SHELL_COMMANDS],
+      allowedGitSubcommands: [...SECURITY_DEFAULTS.GIT_SUBCOMMANDS],
+    }) as any
 
-  securityManager.updateConfig(securityConfig)
+    securityManager.updateConfig(securityConfig)
 
-  // 初始化白名单
-  const shellCommands = securityConfig.allowedShellCommands || [...SECURITY_DEFAULTS.SHELL_COMMANDS]
-  const gitCommands = securityConfig.allowedGitSubcommands || [...SECURITY_DEFAULTS.GIT_SUBCOMMANDS]
-  updateWhitelist(shellCommands, gitCommands)
+    // 初始化白名单
+    const shellCommands = securityConfig.allowedShellCommands || [...SECURITY_DEFAULTS.SHELL_COMMANDS]
+    const gitCommands = securityConfig.allowedGitSubcommands || [...SECURITY_DEFAULTS.GIT_SUBCOMMANDS]
+    updateWhitelist(shellCommands, gitCommands)
 
-  logger.system.info('[Security] ✅ 安全模块已初始化')
+    logger.system.info('[Security] ✅ 安全模块已初始化')
 
-  // 注册所有 IPC handlers
-  registerAllHandlers({
-    getMainWindow,
-    createWindow,
-    mainStore,
-    bootstrapStore,
-    setMainStore: (store) => {
-      mainStore = store
-    },
-    // 窗口-工作区管理函数
-    findWindowByWorkspace,
-    setWindowWorkspace,
-    getWindowWorkspace,
-  })
+    // 注册所有 IPC handlers
+    registerAllHandlers({
+      getMainWindow,
+      createWindow,
+      mainStore,
+      bootstrapStore,
+      setMainStore: (store) => {
+        mainStore = store
+      },
+      // 窗口-工作区管理函数
+      findWindowByWorkspace,
+      setWindowWorkspace,
+      getWindowWorkspace,
+    })
 
-  // 创建应用菜单
-  const { Menu } = require('electron')
-  const template = [
-    {
-      label: 'File',
-      submenu: [
-        { role: 'quit' }
-      ]
-    },
-    {
-      label: 'Edit',
-      submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
-        { type: 'separator' },
-        { role: 'cut' },
-        { role: 'copy' },
-        { role: 'paste' },
-        { role: 'selectAll' }
-      ]
-    },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-        {
-          label: 'Command Palette',
-          // accelerator: 'Ctrl+Shift+P', // Remove accelerator to let renderer handle it
-          click: (_: any, focusedWindow: BrowserWindow) => {
-            logger.system.info('[Main] Menu: Command Palette triggered')
-            if (focusedWindow) {
-              logger.system.info('[Main] Sending workbench:execute-command to renderer')
-              focusedWindow.webContents.send('workbench:execute-command', 'workbench.action.showCommands')
-            } else {
-              logger.system.info('[Main] No focused window to send command to')
+    securityManager.setMainWindow(firstWin)
+
+    // 创建应用菜单
+    const { Menu } = require('electron')
+    const template = [
+      {
+        label: 'File',
+        submenu: [
+          { role: 'quit' }
+        ]
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'selectAll' }
+        ]
+      },
+      {
+        label: 'View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' },
+          {
+            label: 'Command Palette',
+            click: (_: any, focusedWindow: BrowserWindow) => {
+              logger.system.info('[Main] Menu: Command Palette triggered')
+              if (focusedWindow) {
+                logger.system.info('[Main] Sending workbench:execute-command to renderer')
+                focusedWindow.webContents.send('workbench:execute-command', 'workbench.action.showCommands')
+              } else {
+                logger.system.info('[Main] No focused window to send command to')
+              }
             }
           }
-        }
-      ]
-    }
-  ]
-  const menu = Menu.buildFromTemplate(template)
-  Menu.setApplicationMenu(menu)
-
-  // 创建第一个窗口
-  const firstWin = createWindow()
-  securityManager.setMainWindow(firstWin)
+        ]
+      }
+    ]
+    const menu = Menu.buildFromTemplate(template)
+    Menu.setApplicationMenu(menu)
+    
+    logger.system.info('[Main] All modules initialized')
+  })
 })
+
+// 最小化 IPC 注册（窗口控制，在模块加载前就需要）
+// 注意：这些 handlers 会在 registerAllHandlers 中被覆盖，但由于 ipcMain.on 允许多个监听器，
+// 我们使用 ipcMain.handle 的会被后续注册覆盖（handle 只允许一个）
+function registerMinimalIPC() {
+  // 窗口控制 - 使用 once 风格的检查避免重复
+  if (!(ipcMain as any).__minimalIPCRegistered) {
+    (ipcMain as any).__minimalIPCRegistered = true
+    
+    // 渲染进程就绪通知（空操作，窗口已显示）
+    ipcMain.on('app:ready', () => {
+      logger.system.info('[Main] Renderer reported ready')
+    })
+  }
+}
 
 // 处理第二个实例启动（打开新窗口）
 app.on('second-instance', () => {
