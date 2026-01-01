@@ -118,6 +118,7 @@ export class ToolExecutionService {
         status,
         result: result.result,
         error: result.error,
+        richContent: result.richContent,
         arguments: { ...args, _meta: result.meta },
       })
     }

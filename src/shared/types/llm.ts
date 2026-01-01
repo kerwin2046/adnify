@@ -208,13 +208,49 @@ export interface ToolCall {
     status: ToolStatus
     result?: string
     error?: string
+    /** 富内容结果（图片、代码、表格等） */
+    richContent?: ToolRichContent[]
 }
 
 export interface ToolExecutionResult {
     success: boolean
+    /** 文本结果（向后兼容） */
     result: string
     error?: string
+    /** 元数据 */
     meta?: Record<string, unknown>
+    /** 富内容结果（支持多种类型） */
+    richContent?: ToolRichContent[]
+}
+
+/** 工具富内容类型 */
+export type ToolRichContentType = 'text' | 'image' | 'code' | 'json' | 'markdown' | 'html' | 'file' | 'link' | 'table'
+
+/** 工具富内容 */
+export interface ToolRichContent {
+    /** 内容类型 */
+    type: ToolRichContentType
+    /** 文本内容 */
+    text?: string
+    /** Base64 数据（用于图片等二进制内容） */
+    data?: string
+    /** MIME 类型 */
+    mimeType?: string
+    /** 文件路径或 URI */
+    uri?: string
+    /** 标题 */
+    title?: string
+    /** 代码语言（type 为 code 时使用） */
+    language?: string
+    /** 表格数据（type 为 table 时使用） */
+    tableData?: {
+        headers: string[]
+        rows: string[][]
+    }
+    /** 链接 URL（type 为 link 时使用） */
+    url?: string
+    /** 附加属性 */
+    attributes?: Record<string, unknown>
 }
 
 export interface ToolExecutionContext {

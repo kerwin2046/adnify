@@ -50,6 +50,8 @@ export interface ToolCall {
   approvalType?: ToolApprovalType
   result?: string
   error?: string
+  /** 富内容结果（图片、代码、表格等） */
+  richContent?: import('@/shared/types').ToolRichContent[]
 }
 
 export interface ContextStats {

@@ -1,6 +1,6 @@
 /**
  * 工具调用卡片 - Cursor 风格设计
- * 支持流式参数预览、状态指示、结果展示、代码高亮
+ * 支持流式参数预览、状态指示、结果展示、富内容渲染
  */
 
 import { useState, useMemo, useEffect, memo } from 'react'
@@ -14,6 +14,7 @@ import { t } from '@renderer/i18n'
 import { ToolCall } from '@renderer/agent/types'
 import { JsonHighlight } from '@utils/jsonHighlight'
 import { terminalManager } from '@/renderer/services/TerminalManager'
+import { RichContentRenderer } from './RichContentRenderer'
 
 interface ToolCallCardProps {
   toolCall: ToolCall
@@ -219,8 +220,13 @@ const ToolCallCard = memo(function ToolCallCard({
           </div>
         )}
 
-        {/* 结果 */}
-        {toolCall.result && (
+        {/* 富内容结果（图片、代码、表格等） */}
+        {toolCall.richContent && toolCall.richContent.length > 0 && (
+          <RichContentRenderer content={toolCall.richContent} maxHeight="max-h-64" />
+        )}
+
+        {/* 文本结果（仅在没有富内容时显示，或作为补充） */}
+        {toolCall.result && (!toolCall.richContent || toolCall.richContent.length === 0) && (
           <div className="bg-black/20 rounded-md border border-white/5 overflow-hidden shadow-inner">
             <div className="flex items-center justify-between px-3 py-1.5 bg-white/5 border-b border-white/5">
               <span className="text-[10px] text-text-muted uppercase tracking-wider font-medium">Result</span>
@@ -392,7 +398,8 @@ const ToolCallCard = memo(function ToolCallCard({
     prevProps.toolCall.name === nextProps.toolCall.name &&
     prevProps.isAwaitingApproval === nextProps.isAwaitingApproval &&
     JSON.stringify(prevProps.toolCall.arguments) === JSON.stringify(nextProps.toolCall.arguments) &&
-    prevProps.toolCall.result === nextProps.toolCall.result
+    prevProps.toolCall.result === nextProps.toolCall.result &&
+    prevProps.toolCall.richContent?.length === nextProps.toolCall.richContent?.length
   )
 })
 

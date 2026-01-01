@@ -12,8 +12,9 @@ import type {
   ToolExecutionResult,
   ToolExecutionContext,
   ToolApprovalType,
+  ToolRichContent,
 } from '@/shared/types'
-import type { McpTool, McpServerState } from '@shared/types/mcp'
+import type { McpTool, McpServerState, McpContent } from '@shared/types/mcp'
 
 /** MCP 工具名称前缀 */
 const MCP_TOOL_PREFIX = 'mcp_'
@@ -170,12 +171,13 @@ export class McpToolProvider implements ToolProvider {
         }
       }
 
-      // 将 MCP 内容转换为字符串结果
-      const resultText = this.formatContent(result.content || [])
+      // 转换 MCP 内容为富内容格式
+      const { textResult, richContent } = this.convertMcpContent(result.content || [])
 
       return {
         success: !result.isError,
-        result: resultText || 'Tool executed successfully',
+        result: textResult || 'Tool executed successfully',
+        richContent: richContent.length > 0 ? richContent : undefined,
         error: result.isError ? 'Tool returned an error' : undefined,
       }
     } catch (err: any) {
@@ -225,20 +227,270 @@ export class McpToolProvider implements ToolProvider {
     }
   }
 
-  private formatContent(content: Array<{ type: string; text?: string; mimeType?: string; uri?: string }>): string {
-    const parts: string[] = []
-    
+  /**
+   * 将 MCP 内容转换为富内容格式
+   */
+  private convertMcpContent(content: McpContent[]): { textResult: string; richContent: ToolRichContent[] } {
+    const textParts: string[] = []
+    const richContent: ToolRichContent[] = []
+
     for (const item of content) {
-      if (item.type === 'text' && item.text) {
-        parts.push(item.text)
-      } else if (item.type === 'image') {
-        parts.push(`[Image: ${item.mimeType || 'unknown'}]`)
-      } else if (item.type === 'resource') {
-        parts.push(`[Resource: ${item.uri}]`)
+      const converted = this.convertSingleContent(item)
+      if (converted.text) {
+        textParts.push(converted.text)
+      }
+      if (converted.rich) {
+        richContent.push(converted.rich)
       }
     }
 
-    return parts.join('\n').trim()
+    return {
+      textResult: textParts.join('\n').trim(),
+      richContent,
+    }
+  }
+
+  /**
+   * 转换单个 MCP 内容项
+   */
+  private convertSingleContent(item: McpContent): { text?: string; rich?: ToolRichContent } {
+    switch (item.type) {
+      case 'text':
+        return this.convertTextContent(item)
+      case 'image':
+        return this.convertImageContent(item)
+      case 'resource':
+        return this.convertResourceContent(item)
+      default:
+        // 处理未知类型
+        return { text: `[Unknown content type: ${item.type}]` }
+    }
+  }
+
+  /**
+   * 转换文本内容
+   */
+  private convertTextContent(item: McpContent): { text?: string; rich?: ToolRichContent } {
+    if (!item.text) {
+      return {}
+    }
+
+    // 尝试检测内容类型
+    const contentType = this.detectContentType(item.text, item.mimeType)
+
+    const richContent: ToolRichContent = {
+      type: contentType,
+      text: item.text,
+      mimeType: item.mimeType,
+    }
+
+    // 根据内容类型添加额外属性
+    if (contentType === 'code') {
+      richContent.language = this.detectLanguage(item.text, item.mimeType)
+    } else if (contentType === 'json') {
+      // 尝试格式化 JSON
+      try {
+        const parsed = JSON.parse(item.text)
+        richContent.text = JSON.stringify(parsed, null, 2)
+      } catch {
+        // 保持原样
+      }
+    }
+
+    return {
+      text: item.text,
+      rich: richContent,
+    }
+  }
+
+  /**
+   * 转换图片内容
+   */
+  private convertImageContent(item: McpContent): { text?: string; rich?: ToolRichContent } {
+    const mimeType = item.mimeType || 'image/png'
+    
+    if (item.data) {
+      return {
+        text: `[Image: ${mimeType}]`,
+        rich: {
+          type: 'image',
+          data: item.data,
+          mimeType,
+          title: 'Screenshot',
+        },
+      }
+    }
+
+    return {
+      text: `[Image: ${mimeType} - no data]`,
+    }
+  }
+
+  /**
+   * 转换资源内容
+   */
+  private convertResourceContent(item: McpContent): { text?: string; rich?: ToolRichContent } {
+    const uri = item.uri || 'unknown'
+    
+    // 检查是否是文件链接
+    if (uri.startsWith('file://') || uri.match(/^[a-zA-Z]:\\/)) {
+      return {
+        text: `[File: ${uri}]`,
+        rich: {
+          type: 'file',
+          uri,
+          title: uri.split(/[/\\]/).pop() || uri,
+        },
+      }
+    }
+
+    // 检查是否是 URL
+    if (uri.startsWith('http://') || uri.startsWith('https://')) {
+      return {
+        text: `[Link: ${uri}]`,
+        rich: {
+          type: 'link',
+          url: uri,
+          title: uri,
+        },
+      }
+    }
+
+    return {
+      text: `[Resource: ${uri}]`,
+      rich: {
+        type: 'text',
+        text: uri,
+        uri,
+      },
+    }
+  }
+
+  /**
+   * 检测内容类型
+   */
+  private detectContentType(text: string, mimeType?: string): ToolRichContent['type'] {
+    // 根据 MIME 类型判断
+    if (mimeType) {
+      if (mimeType.startsWith('text/html')) return 'html'
+      if (mimeType.startsWith('text/markdown') || mimeType === 'text/x-markdown') return 'markdown'
+      if (mimeType === 'application/json') return 'json'
+      if (mimeType.startsWith('text/') && mimeType !== 'text/plain') return 'code'
+    }
+
+    // 尝试解析为 JSON
+    if (text.trim().startsWith('{') || text.trim().startsWith('[')) {
+      try {
+        JSON.parse(text)
+        return 'json'
+      } catch {
+        // 不是有效的 JSON
+      }
+    }
+
+    // 检测 Markdown 特征
+    if (this.looksLikeMarkdown(text)) {
+      return 'markdown'
+    }
+
+    // 检测 HTML 特征
+    if (text.trim().startsWith('<') && text.includes('</')) {
+      return 'html'
+    }
+
+    // 检测代码特征
+    if (this.looksLikeCode(text)) {
+      return 'code'
+    }
+
+    return 'text'
+  }
+
+  /**
+   * 检测是否像 Markdown
+   */
+  private looksLikeMarkdown(text: string): boolean {
+    const markdownPatterns = [
+      /^#{1,6}\s/m,           // 标题
+      /^\s*[-*+]\s/m,         // 无序列表
+      /^\s*\d+\.\s/m,         // 有序列表
+      /\[.+\]\(.+\)/,         // 链接
+      /!\[.+\]\(.+\)/,        // 图片
+      /```[\s\S]*```/,        // 代码块
+      /`[^`]+`/,              // 行内代码
+      /\*\*[^*]+\*\*/,        // 粗体
+      /\*[^*]+\*/,            // 斜体
+    ]
+    return markdownPatterns.some(pattern => pattern.test(text))
+  }
+
+  /**
+   * 检测是否像代码
+   */
+  private looksLikeCode(text: string): boolean {
+    const codePatterns = [
+      /^(import|export|const|let|var|function|class|interface|type)\s/m,
+      /^(def|class|import|from|if|for|while)\s/m,
+      /^(package|import|public|private|class)\s/m,
+      /[{}\[\]();]/,
+      /=>/,
+      /^\s{2,}/m,  // 缩进
+    ]
+    const matchCount = codePatterns.filter(pattern => pattern.test(text)).length
+    return matchCount >= 2
+  }
+
+  /**
+   * 检测代码语言
+   */
+  private detectLanguage(text: string, mimeType?: string): string {
+    // 根据 MIME 类型
+    if (mimeType) {
+      const mimeToLang: Record<string, string> = {
+        'text/javascript': 'javascript',
+        'application/javascript': 'javascript',
+        'text/typescript': 'typescript',
+        'application/typescript': 'typescript',
+        'text/x-python': 'python',
+        'text/x-java': 'java',
+        'text/x-c': 'c',
+        'text/x-cpp': 'cpp',
+        'text/x-csharp': 'csharp',
+        'text/x-go': 'go',
+        'text/x-rust': 'rust',
+        'text/html': 'html',
+        'text/css': 'css',
+        'application/json': 'json',
+        'text/yaml': 'yaml',
+        'text/x-yaml': 'yaml',
+        'text/xml': 'xml',
+        'application/xml': 'xml',
+        'text/x-sh': 'bash',
+        'text/x-shellscript': 'bash',
+      }
+      if (mimeToLang[mimeType]) {
+        return mimeToLang[mimeType]
+      }
+    }
+
+    // 根据内容特征检测
+    if (/^(import|export|const|let|var|function|class)\s/m.test(text)) {
+      if (/:\s*(string|number|boolean|any|void)\b/.test(text)) {
+        return 'typescript'
+      }
+      return 'javascript'
+    }
+    if (/^(def|class|import|from|if __name__)\s/m.test(text)) {
+      return 'python'
+    }
+    if (/^(package|import|public|private|class)\s/m.test(text)) {
+      return 'java'
+    }
+    if (/^#include\s*[<"]/.test(text)) {
+      return 'cpp'
+    }
+
+    return 'plaintext'
   }
 }
 
