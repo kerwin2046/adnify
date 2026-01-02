@@ -1,6 +1,6 @@
 import { logger } from '@utils/Logger'
 import { useRef, useCallback, useEffect, useState } from 'react'
-import MonacoEditor, { DiffEditor, OnMount, BeforeMount, loader } from '@monaco-editor/react'
+import MonacoEditor, { OnMount, BeforeMount, loader } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
 import { FileCode, X, ChevronRight, AlertCircle, AlertTriangle, RefreshCw, Home, Eye, Edit, Columns } from 'lucide-react'
 import { useStore } from '@store'
@@ -32,193 +32,17 @@ import { getFileInfo, getLargeFileEditorOptions, getLargeFileWarning } from '@se
 import { pathLinkService } from '@services/pathLinkService'
 import { getEditorConfig } from '@renderer/config/editorConfig'
 import { keybindingService } from '@services/keybindingService'
-// 导入 Monaco worker 配置
 import { monaco } from '@renderer/monacoWorker'
-// 导入编辑器配置
 import type { ThemeName } from '@store/slices/themeSlice'
-import { themes } from './ThemeManager'
 
-// 配置 Monaco 使用本地安装的版本（支持国际化）
-// monaco-editor-nls 插件会在构建时注入语言包
+// 从工具模块导入
+import { getLanguage } from './utils/languageMap'
+import { defineMonacoTheme } from './utils/monacoTheme'
+import { SafeDiffEditor } from './SafeDiffEditor'
+import { TabContextMenu } from './TabContextMenu'
+import { EditorWelcome } from './EditorWelcome'
+
 loader.config({ monaco })
-
-// 语言映射
-const LANGUAGE_MAP: Record<string, string> = {
-  // JavaScript / TypeScript
-  ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript', mjs: 'javascript', cjs: 'javascript',
-  // Web
-  html: 'html', htm: 'html', vue: 'html', svelte: 'html', css: 'css', scss: 'scss', less: 'scss',
-  // Python
-  py: 'python', pyw: 'python', pyi: 'python',
-  // Java
-  java: 'java', jar: 'java', class: 'java',
-  // C / C++
-  c: 'c', h: 'c', cpp: 'cpp', hpp: 'cpp', cc: 'cpp', cxx: 'cpp',
-  // C#
-  cs: 'csharp', csx: 'csharp',
-  // Go
-  go: 'go',
-  // Rust
-  rs: 'rust',
-  // Ruby
-  rb: 'ruby', erb: 'ruby',
-  // PHP
-  php: 'php',
-  // Shell
-  sh: 'shell', bash: 'shell', zsh: 'shell', fish: 'shell',
-  // PowerShell
-  ps1: 'powershell', psm1: 'powershell',
-  // Data / Config
-  json: 'json', jsonc: 'json',
-  xml: 'xml', svg: 'xml', xaml: 'xml',
-  yml: 'yaml', yaml: 'yaml',
-  toml: 'ini', ini: 'ini', env: 'ini', conf: 'ini', properties: 'ini',
-  md: 'markdown', mdx: 'markdown',
-  sql: 'sql',
-  // Mobile
-  swift: 'swift',
-  kt: 'kotlin', kts: 'kotlin',
-  dart: 'dart',
-  // Others
-  lua: 'lua',
-  r: 'r',
-  pl: 'perl', pm: 'perl',
-  clj: 'clojure', cljs: 'clojure', edn: 'clojure',
-  scala: 'scala', sc: 'scala',
-  groovy: 'groovy', gradle: 'groovy',
-  m: 'objective-c', mm: 'objective-c',
-  hs: 'haskell',
-  ex: 'elixir', exs: 'elixir',
-  erl: 'erlang', hr: 'erlang',
-  fs: 'fsharp', fsi: 'fsharp', fsx: 'fsharp',
-  v: 'verilog', vh: 'verilog',
-  coffee: 'coffeescript',
-  dockerfile: 'dockerfile',
-  makefile: 'makefile',
-  bat: 'bat', cmd: 'bat',
-  diff: 'diff', patch: 'diff',
-}
-
-const getLanguage = (path: string): string => {
-  const fileName = getFileName(path).toLowerCase()
-
-  // 特殊文件名
-  if (fileName === 'dockerfile') return 'dockerfile'
-  if (fileName === 'makefile') return 'makefile'
-  if (fileName.startsWith('.env')) return 'ini'
-
-  const ext = fileName.split('.').pop() || ''
-  return LANGUAGE_MAP[ext] || 'plaintext'
-}
-
-// RGB 字符串转 Hex
-const rgbToHex = (rgbStr: string) => {
-  const [r, g, b] = rgbStr.split(' ').map(Number)
-  return '#' + [r, g, b].map(x => {
-    const hex = x.toString(16)
-    return hex.length === 1 ? '0' + hex : hex
-  }).join('')
-}
-
-// 定义 Monaco 主题（在 beforeMount 中调用，避免白屏）
-const defineMonacoTheme = (monacoInstance: typeof import('monaco-editor'), themeName: ThemeName) => {
-  const themeVars = themes[themeName] || themes['adnify-dark']
-  if (!themeVars) return
-
-  const bg = rgbToHex(themeVars['--background'])
-  const surface = rgbToHex(themeVars['--surface'])
-  const text = rgbToHex(themeVars['--text-primary'])
-  const textMuted = rgbToHex(themeVars['--text-muted'])
-  const border = rgbToHex(themeVars['--border'])
-  const accent = rgbToHex(themeVars['--accent'])
-  const selection = accent + '40'
-
-  monacoInstance.editor.defineTheme('adnify-dynamic', {
-    base: themeName === 'dawn' ? 'vs' : 'vs-dark',
-    inherit: true,
-    rules: [
-      { token: 'comment', foreground: textMuted.slice(1), fontStyle: 'italic' },
-      { token: 'keyword', foreground: accent.slice(1) },
-      { token: 'string', foreground: 'a5d6ff' },
-      { token: 'number', foreground: 'ffc600' },
-      { token: 'type', foreground: '4ec9b0' },
-    ],
-    colors: {
-      'editor.background': bg,
-      'editor.foreground': text,
-      'editor.lineHighlightBackground': surface,
-      'editorCursor.foreground': accent,
-      'editorWhitespace.foreground': border,
-      'editorIndentGuide.background': border,
-      'editor.selectionBackground': selection,
-      'editorLineNumber.foreground': textMuted,
-      'editorLineNumber.activeForeground': text,
-      'editorWidget.background': surface,
-      'editorWidget.border': border,
-      'editorSuggestWidget.background': surface,
-      'editorSuggestWidget.border': border,
-      'editorSuggestWidget.selectedBackground': accent + '20',
-      'editorHoverWidget.background': surface,
-      'editorHoverWidget.border': border,
-    }
-  })
-}
-
-/**
- * 安全的 DiffEditor 包装组件
- * 解决 Monaco DiffEditor 在卸载时 TextModel 被提前销毁的问题
- */
-interface SafeDiffEditorProps {
-  original: string | undefined
-  modified: string | undefined
-  language: string
-  options?: editor.IDiffEditorConstructionOptions
-  onMount?: (editor: editor.IStandaloneDiffEditor, monaco: typeof import('monaco-editor')) => void
-}
-
-function SafeDiffEditor({ original, modified, language, options, onMount }: SafeDiffEditorProps) {
-  const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null)
-
-  // 在组件卸载时安全清理
-  useEffect(() => {
-    return () => {
-      if (diffEditorRef.current) {
-        try {
-          // 先获取 models
-          const originalModel = diffEditorRef.current.getOriginalEditor()?.getModel()
-          const modifiedModel = diffEditorRef.current.getModifiedEditor()?.getModel()
-          
-          // 设置空 model 避免 dispose 时的错误
-          diffEditorRef.current.setModel(null)
-          
-          // 然后 dispose models
-          originalModel?.dispose()
-          modifiedModel?.dispose()
-        } catch (e) {
-          // 忽略清理时的错误
-        }
-        diffEditorRef.current = null
-      }
-    }
-  }, [])
-
-  const handleMount = useCallback((editor: editor.IStandaloneDiffEditor, monacoInstance: typeof import('monaco-editor')) => {
-    diffEditorRef.current = editor
-    onMount?.(editor, monacoInstance)
-  }, [onMount])
-
-  return (
-    <DiffEditor
-      height="100%"
-      language={language}
-      original={original}
-      modified={modified}
-      theme="adnify-dynamic"
-      options={options}
-      onMount={handleMount}
-    />
-  )
-}
 
 export default function Editor() {
   const { openFiles, activeFilePath, setActiveFile, closeFile, updateFileContent, markFileSaved, language, activeDiff, setActiveDiff, setCursorPosition, setIsLspReady } = useStore()
@@ -924,96 +748,7 @@ export default function Editor() {
   }
 
   if (openFiles.length === 0) {
-    return (
-      <div className="h-full flex flex-col bg-transparent relative overflow-hidden">
-        {/* Background Decoration */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-accent/5 rounded-full blur-[120px] opacity-50" />
-          <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-purple-500/5 rounded-full blur-[100px] opacity-30" />
-          <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-blue-500/5 rounded-full blur-[100px] opacity-30" />
-        </div>
-
-        <div className="flex-1 flex flex-col items-center justify-center relative z-10 animate-fade-in p-8">
-          {/* Hero Section */}
-          <div className="text-center mb-12">
-            <div className="relative inline-block mb-6 group">
-              <div className="absolute inset-0 bg-accent/20 blur-2xl rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-              <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-surface to-surface-active border border-border-subtle flex items-center justify-center shadow-2xl relative z-10 transform group-hover:scale-105 transition-transform duration-500">
-                <FileCode className="w-12 h-12 text-accent" />
-              </div>
-            </div>
-
-            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-br from-text-primary to-text-primary/60 mb-3 tracking-tight">
-              ADNIFY
-            </h1>
-            <p className="text-text-muted text-lg font-light tracking-wide opacity-80">
-              Advanced AI-Powered Editor
-            </p>
-          </div>
-
-          {/* Quick Actions */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-2xl">
-            <button
-              onClick={() => useStore.getState().setShowQuickOpen(true)}
-              className="group flex items-center justify-between p-4 rounded-xl bg-surface/30 hover:bg-surface/60 border border-border-subtle hover:border-accent/20 transition-all duration-300 backdrop-blur-sm"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center group-hover:bg-accent/20 transition-colors">
-                  <FileCode className="w-5 h-5 text-accent" />
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-medium text-text-primary group-hover:text-white transition-colors">
-                    {t('searchFile', language)}
-                  </div>
-                  <div className="text-xs text-text-muted">Search and open files</div>
-                </div>
-              </div>
-              <div className="flex gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                <kbd className="h-6 px-2 rounded bg-surface/50 border border-border-subtle text-[10px] font-mono flex items-center text-text-muted">Ctrl</kbd>
-                <kbd className="h-6 px-2 rounded bg-surface/50 border border-border-subtle text-[10px] font-mono flex items-center text-text-muted">P</kbd>
-              </div>
-            </button>
-
-            <button
-              onClick={() => useStore.getState().setShowCommandPalette(true)}
-              className="group flex items-center justify-between p-4 rounded-xl bg-surface/30 hover:bg-surface/60 border border-border-subtle hover:border-accent/20 transition-all duration-300 backdrop-blur-sm"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
-                  <div className="w-5 h-5 text-purple-400 font-mono font-bold text-center leading-5">{'>'}</div>
-                </div>
-                <div className="text-left">
-                  <div className="text-sm font-medium text-text-primary group-hover:text-white transition-colors">
-                    {t('commandPalette', language)}
-                  </div>
-                  <div className="text-xs text-text-muted">Run commands</div>
-                </div>
-              </div>
-              <div className="flex gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                <kbd className="h-6 px-2 rounded bg-surface/50 border border-border-subtle text-[10px] font-mono flex items-center text-text-muted">Ctrl</kbd>
-                <kbd className="h-6 px-2 rounded bg-surface/50 border border-border-subtle text-[10px] font-mono flex items-center text-text-muted">Shift</kbd>
-                <kbd className="h-6 px-2 rounded bg-surface/50 border border-border-subtle text-[10px] font-mono flex items-center text-text-muted">P</kbd>
-              </div>
-            </button>
-          </div>
-
-          {/* Footer Hints */}
-          <div className="mt-12 flex items-center gap-8 text-xs text-text-muted/60">
-            <div className="flex items-center gap-2">
-              <kbd className="px-1.5 py-0.5 rounded bg-surface/50 border border-border-subtle font-mono">Ctrl</kbd>
-              <span>+</span>
-              <kbd className="px-1.5 py-0.5 rounded bg-surface/50 border border-border-subtle font-mono">,</kbd>
-              <span>Settings</span>
-            </div>
-            <div className="w-1 h-1 rounded-full bg-text-muted/20" />
-            <div className="flex items-center gap-2">
-              <kbd className="px-1.5 py-0.5 rounded bg-surface/50 border border-border-subtle font-mono">F12</kbd>
-              <span>DevTools</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+    return <EditorWelcome />
   }
 
   return (
@@ -1470,86 +1205,6 @@ export default function Editor() {
           isDirty={openFiles.find((f: { path: string; isDirty?: boolean }) => f.path === tabContextMenu.filePath)?.isDirty || false}
           language={language}
         />
-      )}
-    </div>
-  )
-}
-
-// Tab 右键菜单组件
-interface TabContextMenuProps {
-  x: number
-  y: number
-  filePath: string
-  onClose: () => void
-  onCloseFile: (path: string) => void
-  onCloseOthers: (path: string) => void
-  onCloseAll: () => void
-  onCloseToRight: (path: string) => void
-  onSave: (path: string) => void
-  isDirty: boolean
-  language: string
-}
-
-function TabContextMenu({
-  x, y, filePath, onClose, onCloseFile, onCloseOthers, onCloseAll, onCloseToRight, onSave, isDirty, language
-}: TabContextMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null)
-  const isZh = language === 'zh'
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose()
-      }
-    }
-    const handleEscape = (e: KeyboardEvent) => {
-      if (keybindingService.matches(e, 'editor.cancel')) onClose()
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('keydown', handleEscape)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('keydown', handleEscape)
-    }
-  }, [onClose])
-
-  const menuItems = [
-    { label: isZh ? '关闭' : 'Close', action: () => onCloseFile(filePath), shortcut: 'Ctrl+W' },
-    { label: isZh ? '关闭其他' : 'Close Others', action: () => onCloseOthers(filePath) },
-    { label: isZh ? '关闭右侧' : 'Close to the Right', action: () => onCloseToRight(filePath) },
-    { label: isZh ? '关闭所有' : 'Close All', action: () => onCloseAll() },
-    { type: 'separator' as const },
-    { label: isZh ? '保存' : 'Save', action: () => onSave(filePath), shortcut: 'Ctrl+S', disabled: !isDirty },
-    { type: 'separator' as const },
-    {
-      label: isZh ? '复制路径' : 'Copy Path', action: () => {
-        navigator.clipboard.writeText(filePath)
-        toast.success(isZh ? '已复制路径' : 'Path Copied')
-      }
-    },
-    { label: isZh ? '在资源管理器中显示' : 'Reveal in Explorer', action: () => window.electronAPI.showItemInFolder(filePath) },
-  ]
-
-  return (
-    <div
-      ref={menuRef}
-      className="fixed bg-background-secondary border border-border-subtle rounded-lg shadow-xl py-1 z-[9999] min-w-[180px]"
-      style={{ left: x, top: y }}
-    >
-      {menuItems.map((item, index) =>
-        item.type === 'separator' ? (
-          <div key={index} className="h-px bg-border-subtle my-1" />
-        ) : (
-          <button
-            key={index}
-            onClick={() => { item.action?.(); onClose() }}
-            disabled={item.disabled}
-            className="w-full px-3 py-1.5 text-left text-sm text-text-primary hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
-          >
-            <span>{item.label}</span>
-            {item.shortcut && <span className="text-xs text-text-muted ml-4">{item.shortcut}</span>}
-          </button>
-        )
       )}
     </div>
   )
