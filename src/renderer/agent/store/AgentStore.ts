@@ -65,7 +65,7 @@ class StreamingBuffer {
     private timerId: ReturnType<typeof setTimeout> | null = null
     private flushCallback: ((messageId: string, content: string) => void) | null = null
     private lastFlushTime = 0
-    private readonly FLUSH_INTERVAL = 50 // 刷新间隔 50ms
+    private readonly FLUSH_INTERVAL = 16 // 约 60fps，更流畅的更新
 
     setFlushCallback(callback: (messageId: string, content: string) => void) {
         this.flushCallback = callback
@@ -80,14 +80,24 @@ class StreamingBuffer {
     private scheduleFlush(): void {
         if (this.timerId) return
         
+        // 使用 requestAnimationFrame 获得更流畅的更新
+        // 同时保持最小间隔避免过度渲染
         const now = performance.now()
         const elapsed = now - this.lastFlushTime
-        const delay = Math.max(0, this.FLUSH_INTERVAL - elapsed)
         
-        this.timerId = setTimeout(() => {
-            this.timerId = null
-            this.flush()
-        }, delay)
+        if (elapsed >= this.FLUSH_INTERVAL) {
+            // 已经过了足够时间，立即用 rAF 刷新
+            this.timerId = requestAnimationFrame(() => {
+                this.timerId = null
+                this.flush()
+            }) as unknown as ReturnType<typeof setTimeout>
+        } else {
+            // 还需要等待，用 setTimeout
+            this.timerId = setTimeout(() => {
+                this.timerId = null
+                this.flush()
+            }, this.FLUSH_INTERVAL - elapsed)
+        }
     }
 
     private flush(): void {
@@ -106,7 +116,9 @@ class StreamingBuffer {
 
     flushNow(): void {
         if (this.timerId) {
+            // 尝试取消两种类型的定时器
             clearTimeout(this.timerId)
+            cancelAnimationFrame(this.timerId as unknown as number)
             this.timerId = null
         }
         this.flush()
@@ -115,6 +127,7 @@ class StreamingBuffer {
     clear(): void {
         if (this.timerId) {
             clearTimeout(this.timerId)
+            cancelAnimationFrame(this.timerId as unknown as number)
             this.timerId = null
         }
         this.buffer.clear()
