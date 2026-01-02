@@ -1,32 +1,113 @@
 /**
  * Embedding 服务
  * 支持多个免费/付费 Embedding API 提供商
+ * 包含速率限制和重试机制
  */
 
 import {
   EmbeddingConfig,
-
+  EmbeddingProvider,
   DEFAULT_EMBEDDING_MODELS,
   EMBEDDING_ENDPOINTS,
 } from './types'
 
+// 每个 provider 支持的模型前缀/关键词
+const PROVIDER_MODEL_PATTERNS: Record<string, RegExp> = {
+  jina: /^jina-/i,
+  voyage: /^voyage-/i,
+  openai: /^text-embedding/i,
+  cohere: /^embed-/i,
+  huggingface: /^sentence-transformers\//i,
+  ollama: /^(nomic|llama|mxbai)/i,
+}
+
+// 每个 provider 的速率限制配置（保守值，适用于免费账户）
+const RATE_LIMITS: Record<EmbeddingProvider, { rpm: number; batchSize: number }> = {
+  jina: { rpm: 60, batchSize: 100 },      // Jina 比较宽松
+  voyage: { rpm: 3, batchSize: 8 },        // Voyage 免费账户 3 RPM
+  openai: { rpm: 60, batchSize: 100 },     // OpenAI 付费账户
+  cohere: { rpm: 100, batchSize: 96 },     // Cohere 免费 100/min
+  huggingface: { rpm: 30, batchSize: 1 },  // HuggingFace 逐个请求
+  ollama: { rpm: 1000, batchSize: 1 },     // 本地无限制
+}
+
+/**
+ * 简单的速率限制器
+ */
+class RateLimiter {
+  private lastRequestTime = 0
+  private readonly minInterval: number // 毫秒
+
+  constructor(rpm: number) {
+    this.minInterval = Math.ceil(60000 / rpm)
+  }
+
+  async wait(): Promise<void> {
+    const now = Date.now()
+    const elapsed = now - this.lastRequestTime
+    if (elapsed < this.minInterval) {
+      await this.sleep(this.minInterval - elapsed)
+    }
+    this.lastRequestTime = Date.now()
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+}
+
 export class EmbeddingService {
   private config: EmbeddingConfig
+  private rateLimiter: RateLimiter
+  private batchSize: number
 
   constructor(config: EmbeddingConfig) {
     this.config = {
       ...config,
-      model: config.model || DEFAULT_EMBEDDING_MODELS[config.provider],
+      model: this.resolveModel(config.provider, config.model),
     }
+    const limits = RATE_LIMITS[config.provider]
+    this.rateLimiter = new RateLimiter(limits.rpm)
+    this.batchSize = limits.batchSize
+  }
+
+  /**
+   * 解析并验证 model，确保与 provider 匹配
+   */
+  private resolveModel(provider: string, model?: string): string {
+    if (!model) {
+      return DEFAULT_EMBEDDING_MODELS[provider as keyof typeof DEFAULT_EMBEDDING_MODELS]
+    }
+
+    const pattern = PROVIDER_MODEL_PATTERNS[provider]
+    if (pattern && !pattern.test(model)) {
+      console.warn(
+        `[EmbeddingService] Model "${model}" doesn't match provider "${provider}", using default: ${DEFAULT_EMBEDDING_MODELS[provider as keyof typeof DEFAULT_EMBEDDING_MODELS]}`
+      )
+      return DEFAULT_EMBEDDING_MODELS[provider as keyof typeof DEFAULT_EMBEDDING_MODELS]
+    }
+
+    return model
   }
 
   /**
    * 更新配置
    */
   updateConfig(config: Partial<EmbeddingConfig>): void {
-    this.config = { ...this.config, ...config }
-    if (config.provider && !config.model) {
-      this.config.model = DEFAULT_EMBEDDING_MODELS[config.provider]
+    const newProvider = config.provider || this.config.provider
+    const newModel = this.resolveModel(newProvider, config.model || this.config.model)
+
+    this.config = {
+      ...this.config,
+      ...config,
+      model: newModel,
+    }
+
+    // 更新速率限制器
+    if (config.provider) {
+      const limits = RATE_LIMITS[config.provider]
+      this.rateLimiter = new RateLimiter(limits.rpm)
+      this.batchSize = limits.batchSize
     }
   }
 
@@ -39,11 +120,59 @@ export class EmbeddingService {
   }
 
   /**
-   * 批量获取 embedding
+   * 批量获取 embedding（自动分批 + 速率限制 + 重试）
    */
   async embedBatch(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return []
 
+    const results: number[][] = []
+
+    // 按 batchSize 分批处理
+    for (let i = 0; i < texts.length; i += this.batchSize) {
+      const batch = texts.slice(i, i + this.batchSize)
+
+      // 等待速率限制
+      await this.rateLimiter.wait()
+
+      // 带重试的请求
+      const batchResults = await this.embedWithRetry(batch)
+      results.push(...batchResults)
+    }
+
+    return results
+  }
+
+  /**
+   * 带重试的 embedding 请求
+   */
+  private async embedWithRetry(texts: string[], maxRetries = 3): Promise<number[][]> {
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        return await this.embedSingle(texts)
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+
+        // 429 错误需要等待更长时间
+        if (lastError.message.includes('429')) {
+          const waitTime = Math.pow(2, attempt + 1) * 20000 // 20s, 40s, 80s
+          console.warn(`[EmbeddingService] Rate limited, waiting ${waitTime / 1000}s before retry...`)
+          await this.sleep(waitTime)
+        } else if (attempt < maxRetries - 1) {
+          // 其他错误短暂等待后重试
+          await this.sleep(1000 * (attempt + 1))
+        }
+      }
+    }
+
+    throw lastError || new Error('Embedding failed after retries')
+  }
+
+  /**
+   * 单次 embedding 请求（不带重试）
+   */
+  private async embedSingle(texts: string[]): Promise<number[][]> {
     switch (this.config.provider) {
       case 'jina':
         return this.embedJina(texts)
@@ -62,9 +191,13 @@ export class EmbeddingService {
     }
   }
 
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms))
+  }
+
+
   /**
-   * Jina AI Embedding (免费 100万 tokens/月)
-   * https://jina.ai/embeddings/
+   * Jina AI Embedding
    */
   private async embedJina(texts: string[]): Promise<number[][]> {
     const url = this.config.baseUrl || EMBEDDING_ENDPOINTS.jina
@@ -72,22 +205,26 @@ export class EmbeddingService {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${this.config.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: this.config.model || 'jina-embeddings-v2-base-code',
+        model: this.config.model,
         input: texts,
       }),
     })
 
-    const data = await response.json() as { data: { embedding: number[] }[] }
+    if (!response.ok) {
+      const error = await response.text()
+      throw new Error(`Jina API error: ${response.status} - ${error}`)
+    }
+
+    const data = (await response.json()) as { data: { embedding: number[] }[] }
     return data.data.map((item: { embedding: number[] }) => item.embedding)
   }
 
   /**
-   * Voyage AI Embedding (免费 5000万 tokens)
-   * https://www.voyageai.com/
+   * Voyage AI Embedding
    */
   private async embedVoyage(texts: string[]): Promise<number[][]> {
     const url = this.config.baseUrl || EMBEDDING_ENDPOINTS.voyage
@@ -95,11 +232,11 @@ export class EmbeddingService {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${this.config.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: this.config.model || 'voyage-code-2',
+        model: this.config.model,
         input: texts,
       }),
     })
@@ -109,7 +246,7 @@ export class EmbeddingService {
       throw new Error(`Voyage API error: ${response.status} - ${error}`)
     }
 
-    const data = await response.json() as { data: { embedding: number[] }[] }
+    const data = (await response.json()) as { data: { embedding: number[] }[] }
     return data.data.map((item: { embedding: number[] }) => item.embedding)
   }
 
@@ -122,11 +259,11 @@ export class EmbeddingService {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${this.config.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: this.config.model || 'text-embedding-3-small',
+        model: this.config.model,
         input: texts,
       }),
     })
@@ -136,14 +273,14 @@ export class EmbeddingService {
       throw new Error(`OpenAI API error: ${response.status} - ${error}`)
     }
 
-    const data = await response.json() as { data: { embedding: number[]; index: number }[] }
+    const data = (await response.json()) as { data: { embedding: number[]; index: number }[] }
     return data.data
-      .sort((a: { index: number }, b: { index: number }) => a.index - b.index)
-      .map((item: { embedding: number[] }) => item.embedding)
+      .sort((a, b) => a.index - b.index)
+      .map(item => item.embedding)
   }
 
   /**
-   * Cohere Embedding (免费 100次/分钟)
+   * Cohere Embedding
    */
   private async embedCohere(texts: string[]): Promise<number[][]> {
     const url = this.config.baseUrl || EMBEDDING_ENDPOINTS.cohere
@@ -151,11 +288,11 @@ export class EmbeddingService {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.config.apiKey}`,
+        Authorization: `Bearer ${this.config.apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: this.config.model || 'embed-english-v3.0',
+        model: this.config.model,
         texts: texts,
         input_type: 'search_document',
       }),
@@ -166,25 +303,24 @@ export class EmbeddingService {
       throw new Error(`Cohere API error: ${response.status} - ${error}`)
     }
 
-    const data = await response.json() as { embeddings: number[][] }
+    const data = (await response.json()) as { embeddings: number[][] }
     return data.embeddings
   }
 
   /**
-   * HuggingFace Inference API (免费，有速率限制)
+   * HuggingFace Inference API
    */
   private async embedHuggingFace(texts: string[]): Promise<number[][]> {
     const model = this.config.model || 'sentence-transformers/all-MiniLM-L6-v2'
     const url = this.config.baseUrl || `${EMBEDDING_ENDPOINTS.huggingface}/${model}`
 
-    // HuggingFace 需要逐个请求或使用特定格式
     const results: number[][] = []
 
     for (const text of texts) {
       const response = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
+          Authorization: `Bearer ${this.config.apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ inputs: text }),
@@ -195,11 +331,9 @@ export class EmbeddingService {
         throw new Error(`HuggingFace API error: ${response.status} - ${error}`)
       }
 
-      const data = await response.json() as number[] | number[][]
-      // HuggingFace 返回的是 token embeddings，需要平均池化
+      const data = (await response.json()) as number[] | number[][]
       if (Array.isArray(data) && Array.isArray(data[0])) {
-        const pooled = this.meanPooling(data as number[][])
-        results.push(pooled)
+        results.push(this.meanPooling(data as number[][]))
       } else {
         results.push(data as number[])
       }
@@ -209,13 +343,12 @@ export class EmbeddingService {
   }
 
   /**
-   * Ollama 本地 Embedding (完全免费，需要本地运行 Ollama)
+   * Ollama 本地 Embedding
    */
   private async embedOllama(texts: string[]): Promise<number[][]> {
     const url = this.config.baseUrl || EMBEDDING_ENDPOINTS.ollama
     const results: number[][] = []
 
-    // Ollama 需要逐个请求
     for (const text of texts) {
       const response = await fetch(url, {
         method: 'POST',
@@ -223,7 +356,7 @@ export class EmbeddingService {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: this.config.model || 'nomic-embed-text',
+          model: this.config.model,
           prompt: text,
         }),
       })
@@ -233,7 +366,7 @@ export class EmbeddingService {
         throw new Error(`Ollama API error: ${response.status} - ${error}`)
       }
 
-      const data = await response.json() as { embedding: number[] }
+      const data = (await response.json()) as { embedding: number[] }
       results.push(data.embedding)
     }
 

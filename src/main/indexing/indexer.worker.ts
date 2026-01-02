@@ -10,20 +10,35 @@ import { TreeSitterChunker } from './treeSitterChunker'
 import { EmbeddingService } from './embedder'
 import { CodeChunk, IndexedChunk, IndexConfig } from './types'
 
-// Worker message types
+/**
+ * Worker 消息类型定义
+ * 注意：Map 通过 postMessage 传递会变成普通对象，所以用 Record 类型
+ */
 type WorkerMessage =
-  | { type: 'index', workspacePath: string, config: IndexConfig, existingHashes?: Map<string, string> }
-  | { type: 'update', workspacePath: string, file: string, config: IndexConfig }
+  | { type: 'index'; workspacePath: string; config: IndexConfig; existingHashes?: Record<string, string> }
+  | { type: 'update'; workspacePath: string; file: string; config: IndexConfig }
+  | { type: 'batch_update'; workspacePath: string; files: string[]; config: IndexConfig }
+
+/**
+ * Worker 响应消息类型
+ */
+type WorkerResponse =
+  | { type: 'progress'; processed: number; total: number }
+  | { type: 'result'; chunks: IndexedChunk[]; processed: number; total: number }
+  | { type: 'update_result'; filePath: string; chunks: IndexedChunk[]; deleted: boolean }
+  | { type: 'batch_update_result'; results: Array<{ filePath: string; chunks: IndexedChunk[]; deleted: boolean }> }
+  | { type: 'complete'; totalChunks: number }
+  | { type: 'error'; error: string }
 
 if (!parentPort) {
   throw new Error('This file must be run as a worker thread.')
 }
 
-// Global chunkers (reused across requests)
+// 全局 Chunker 实例（跨请求复用）
 let regexChunker: ChunkerService | null = null
 let tsChunker: TreeSitterChunker | null = null
 
-async function getChunkers(config: IndexConfig) {
+async function getChunkers(config: IndexConfig): Promise<{ regexChunker: ChunkerService; tsChunker: TreeSitterChunker }> {
   if (!regexChunker) {
     regexChunker = new ChunkerService(config)
   } else {
@@ -37,6 +52,10 @@ async function getChunkers(config: IndexConfig) {
   return { regexChunker, tsChunker }
 }
 
+function postResponse(response: WorkerResponse): void {
+  parentPort?.postMessage(response)
+}
+
 parentPort.on('message', async (message: WorkerMessage) => {
   try {
     switch (message.type) {
@@ -46,245 +65,232 @@ parentPort.on('message', async (message: WorkerMessage) => {
       case 'update':
         await handleUpdate(message.workspacePath, message.file, message.config)
         break
+      case 'batch_update':
+        await handleBatchUpdate(message.workspacePath, message.files, message.config)
+        break
     }
   } catch (error) {
-    parentPort?.postMessage({
+    postResponse({
       type: 'error',
       error: error instanceof Error ? error.message : String(error)
     })
   }
 })
 
-async function handleIndex(workspacePath: string, config: IndexConfig, existingHashes?: Map<string, string>) {
-  try {
-    // 1. Collect files (Moved to worker)
-    const files = await collectCodeFiles(workspacePath, config)
-    const totalFiles = files.length
-    const currentFileSet = new Set(files)
+/**
+ * 处理全量索引请求
+ * existingHashes 是普通对象（Map 通过 postMessage 传递后会序列化）
+ */
+async function handleIndex(
+  workspacePath: string,
+  config: IndexConfig,
+  existingHashes?: Record<string, string>
+): Promise<void> {
+  const files = await collectCodeFiles(workspacePath, config)
+  const totalFiles = files.length
+  const currentFileSet = new Set(files)
 
-    // Check for deleted files
-    if (existingHashes) {
-        for (const filePath of existingHashes.keys()) {
-            if (!currentFileSet.has(filePath)) {
-                parentPort?.postMessage({
-                    type: 'update_result',
-                    filePath,
-                    chunks: [],
-                    deleted: true
-                })
-            }
-        }
-    }
-
-    parentPort?.postMessage({
-      type: 'progress',
-      processed: 0,
-      total: totalFiles
-    })
-
-    if (totalFiles === 0) {
-      parentPort?.postMessage({ type: 'complete', totalChunks: 0 })
-      return
-    }
-
-    const { regexChunker, tsChunker } = await getChunkers(config)
-    const embedder = new EmbeddingService(config.embedding)
-    const limit = pLimit(10) // Concurrency limit
-
-    let processedFiles = 0
-    let totalChunks = 0
-    let skippedFiles = 0
-    
-    // Batch accumulation for results
-    let pendingChunks: IndexedChunk[] = []
-    const RESULT_BATCH_SIZE = 50
-
-    // Flush pending chunks to main process
-    const flushChunks = () => {
-      if (pendingChunks.length > 0) {
-        parentPort?.postMessage({
-          type: 'result',
-          chunks: pendingChunks,
-          processed: processedFiles,
-          total: totalFiles
-        })
-        pendingChunks = []
+  // 检测已删除的文件
+  if (existingHashes) {
+    for (const filePath of Object.keys(existingHashes)) {
+      if (!currentFileSet.has(filePath)) {
+        postResponse({ type: 'update_result', filePath, chunks: [], deleted: true })
       }
     }
-
-    // Process files
-    const tasks = files.map(filePath => limit(async () => {
-      try {
-        const content = await fs.readFile(filePath, 'utf-8')
-        
-        // Skip large files
-        if (content.length > config.maxFileSize) {
-          processedFiles++
-          return
-        }
-
-        // Calculate hash first (simple sha256)
-        // Note: chunker also calculates hash, but we need it here to decide whether to skip.
-        // To avoid double calc, we could use a helper or just let chunker do it.
-        // But if we let chunker do it, we have to parse/chunk first, which is CPU work.
-        // Hash calc is fast.
-        const currentHash = crypto.createHash('sha256').update(content).digest('hex')
-
-        if (existingHashes && existingHashes.get(filePath) === currentHash) {
-            skippedFiles++
-            processedFiles++
-            // Still emit progress occasionally
-            if (processedFiles % 10 === 0) {
-                parentPort?.postMessage({
-                   type: 'progress',
-                   processed: processedFiles,
-                   total: totalFiles
-                })
-            }
-            return
-        }
-
-        // Try Tree-sitter first
-        let chunks: CodeChunk[] = []
-        try {
-            chunks = await tsChunker!.chunkFile(filePath, content, workspacePath)
-        } catch (e) {
-            logger.index.warn(`Tree-sitter failed for ${filePath}, falling back to regex`, e)
-        }
-        
-        // Fallback to regex if empty
-        if (chunks.length === 0) {
-             chunks = regexChunker!.chunkFile(filePath, content, workspacePath)
-        }
-        
-        if (chunks.length > 0) {
-           // Embed
-           const texts = chunks.map(c => prepareTextForEmbedding(c))
-           const vectors = await embedder.embedBatch(texts)
-
-           for (let i = 0; i < chunks.length; i++) {
-             if (vectors[i]) {
-               pendingChunks.push({
-                 ...chunks[i],
-                 vector: vectors[i]
-               })
-             }
-           }
-           totalChunks += chunks.length
-        }
-        
-        processedFiles++
-        
-        // Periodic flush or progress update
-        if (pendingChunks.length >= RESULT_BATCH_SIZE) {
-          flushChunks()
-        } else if (processedFiles % 10 === 0) {
-             parentPort?.postMessage({
-                type: 'progress',
-                processed: processedFiles,
-                total: totalFiles
-             })
-        }
-
-      } catch (error) {
-        logger.index.error(`Error processing file ${filePath}:`, error)
-        // Continue even if one file fails
-        processedFiles++
-      }
-    }))
-
-    await Promise.all(tasks)
-    
-    // Final flush
-    flushChunks()
-
-    logger.index.info(`[Worker] Indexing complete. Total: ${totalFiles}, Skipped: ${skippedFiles}, Chunks: ${totalChunks}`)
-
-    parentPort?.postMessage({
-      type: 'complete',
-      totalChunks
-    })
-
-  } catch (error) {
-     throw error
   }
+
+  postResponse({ type: 'progress', processed: 0, total: totalFiles })
+
+  if (totalFiles === 0) {
+    postResponse({ type: 'complete', totalChunks: 0 })
+    return
+  }
+
+  const { regexChunker, tsChunker } = await getChunkers(config)
+  const embedder = new EmbeddingService(config.embedding)
+  const limit = pLimit(10)
+
+  let processedFiles = 0
+  let totalChunks = 0
+  let skippedFiles = 0
+  let pendingChunks: IndexedChunk[] = []
+  const RESULT_BATCH_SIZE = 50
+
+  const flushChunks = (): void => {
+    if (pendingChunks.length > 0) {
+      postResponse({ type: 'result', chunks: pendingChunks, processed: processedFiles, total: totalFiles })
+      pendingChunks = []
+    }
+  }
+
+  const tasks = files.map(filePath => limit(async () => {
+    try {
+      const content = await fs.readFile(filePath, 'utf-8')
+      
+      if (content.length > config.maxFileSize) {
+        processedFiles++
+        return
+      }
+
+      const currentHash = crypto.createHash('sha256').update(content).digest('hex')
+
+      // 使用对象属性访问（不是 Map.get）
+      if (existingHashes && existingHashes[filePath] === currentHash) {
+        skippedFiles++
+        processedFiles++
+        if (processedFiles % 10 === 0) {
+          postResponse({ type: 'progress', processed: processedFiles, total: totalFiles })
+        }
+        return
+      }
+
+      const chunks = await chunkFile(tsChunker, regexChunker, filePath, content, workspacePath)
+      
+      if (chunks.length > 0) {
+        const texts = chunks.map(c => prepareTextForEmbedding(c))
+        const vectors = await embedder.embedBatch(texts)
+
+        for (let i = 0; i < chunks.length; i++) {
+          if (vectors[i]) {
+            pendingChunks.push({ ...chunks[i], vector: vectors[i] })
+          }
+        }
+        totalChunks += chunks.length
+      }
+      
+      processedFiles++
+      
+      if (pendingChunks.length >= RESULT_BATCH_SIZE) {
+        flushChunks()
+      } else if (processedFiles % 10 === 0) {
+        postResponse({ type: 'progress', processed: processedFiles, total: totalFiles })
+      }
+    } catch (error) {
+      logger.index.error(`Error processing file ${filePath}:`, error)
+      processedFiles++
+    }
+  }))
+
+  await Promise.all(tasks)
+  flushChunks()
+
+  logger.index.info(`[Worker] Indexing complete. Total: ${totalFiles}, Skipped: ${skippedFiles}, Chunks: ${totalChunks}`)
+  postResponse({ type: 'complete', totalChunks })
 }
 
-async function handleUpdate(workspacePath: string, filePath: string, config: IndexConfig) {
+/**
+ * 处理单文件更新请求
+ */
+async function handleUpdate(workspacePath: string, filePath: string, config: IndexConfig): Promise<void> {
+  const { regexChunker, tsChunker } = await getChunkers(config)
+  const embedder = new EmbeddingService(config.embedding)
+
+  // 检查文件是否存在
   try {
-    const { regexChunker, tsChunker } = await getChunkers(config)
-    const embedder = new EmbeddingService(config.embedding)
-
-    // Check if file exists
-    try {
-      await fs.access(filePath)
-    } catch {
-      // File deleted
-      parentPort?.postMessage({
-        type: 'update_result',
-        filePath,
-        chunks: [],
-        deleted: true
-      })
-      return
-    }
-
-    const content = await fs.readFile(filePath, 'utf-8')
-
-    if (content.length > config.maxFileSize) {
-      return
-    }
-
-    // Try Tree-sitter first
-    let chunks: CodeChunk[] = []
-    try {
-        chunks = await tsChunker!.chunkFile(filePath, content, workspacePath)
-    } catch (e) {
-        logger.index.warn(`Tree-sitter failed for ${filePath}, falling back to regex`, e)
-    }
-    
-    // Fallback to regex if empty
-    if (chunks.length === 0) {
-            chunks = regexChunker!.chunkFile(filePath, content, workspacePath)
-    }
-
-    if (chunks.length === 0) {
-      parentPort?.postMessage({
-        type: 'update_result',
-        filePath,
-        chunks: [],
-        deleted: true // Treat empty file as deleted (remove old chunks)
-      })
-      return
-    }
-
-    // Embed
-    const indexedChunks: IndexedChunk[] = []
-    const texts = chunks.map(c => prepareTextForEmbedding(c))
-    const vectors = await embedder.embedBatch(texts)
-
-    chunks.forEach((chunk, idx) => {
-      if (vectors[idx]) {
-        indexedChunks.push({
-          ...chunk,
-          vector: vectors[idx]
-        })
-      }
-    })
-
-    parentPort?.postMessage({
-      type: 'update_result',
-      filePath,
-      chunks: indexedChunks,
-      deleted: false
-    })
-
-  } catch (error) {
-    parentPort?.postMessage({
-      type: 'error',
-      error: error instanceof Error ? error.message : String(error)
-    })
+    await fs.access(filePath)
+  } catch {
+    postResponse({ type: 'update_result', filePath, chunks: [], deleted: true })
+    return
   }
+
+  const content = await fs.readFile(filePath, 'utf-8')
+
+  if (content.length > config.maxFileSize) {
+    return
+  }
+
+  const chunks = await chunkFile(tsChunker, regexChunker, filePath, content, workspacePath)
+
+  if (chunks.length === 0) {
+    postResponse({ type: 'update_result', filePath, chunks: [], deleted: true })
+    return
+  }
+
+  const texts = chunks.map(c => prepareTextForEmbedding(c))
+  const vectors = await embedder.embedBatch(texts)
+
+  const indexedChunks: IndexedChunk[] = chunks
+    .map((chunk, idx) => vectors[idx] ? { ...chunk, vector: vectors[idx] } : null)
+    .filter((c): c is IndexedChunk => c !== null)
+
+  postResponse({ type: 'update_result', filePath, chunks: indexedChunks, deleted: false })
+}
+
+/**
+ * 处理批量文件更新请求
+ */
+async function handleBatchUpdate(workspacePath: string, files: string[], config: IndexConfig): Promise<void> {
+  const { regexChunker, tsChunker } = await getChunkers(config)
+  const embedder = new EmbeddingService(config.embedding)
+  const limit = pLimit(5) // 批量更新时降低并发
+
+  const results: Array<{ filePath: string; chunks: IndexedChunk[]; deleted: boolean }> = []
+
+  const tasks = files.map(filePath => limit(async () => {
+    try {
+      // 检查文件是否存在
+      try {
+        await fs.access(filePath)
+      } catch {
+        results.push({ filePath, chunks: [], deleted: true })
+        return
+      }
+
+      const content = await fs.readFile(filePath, 'utf-8')
+
+      if (content.length > config.maxFileSize) {
+        return
+      }
+
+      const chunks = await chunkFile(tsChunker, regexChunker, filePath, content, workspacePath)
+
+      if (chunks.length === 0) {
+        results.push({ filePath, chunks: [], deleted: true })
+        return
+      }
+
+      const texts = chunks.map(c => prepareTextForEmbedding(c))
+      const vectors = await embedder.embedBatch(texts)
+
+      const indexedChunks: IndexedChunk[] = chunks
+        .map((chunk, idx) => vectors[idx] ? { ...chunk, vector: vectors[idx] } : null)
+        .filter((c): c is IndexedChunk => c !== null)
+
+      results.push({ filePath, chunks: indexedChunks, deleted: false })
+    } catch (error) {
+      logger.index.error(`[Worker] Error updating file ${filePath}:`, error)
+      // 出错的文件跳过，不影响其他文件
+    }
+  }))
+
+  await Promise.all(tasks)
+
+  postResponse({ type: 'batch_update_result', results })
+}
+
+/**
+ * 使用 Tree-sitter 或 Regex 分块文件
+ */
+async function chunkFile(
+  tsChunker: TreeSitterChunker,
+  regexChunker: ChunkerService,
+  filePath: string,
+  content: string,
+  workspacePath: string
+): Promise<CodeChunk[]> {
+  let chunks: CodeChunk[] = []
+  
+  try {
+    chunks = await tsChunker.chunkFile(filePath, content, workspacePath)
+  } catch (e) {
+    logger.index.warn(`Tree-sitter failed for ${filePath}, falling back to regex`)
+  }
+  
+  if (chunks.length === 0) {
+    chunks = regexChunker.chunkFile(filePath, content, workspacePath)
+  }
+  
+  return chunks
 }
 
 function prepareTextForEmbedding(chunk: CodeChunk): string {

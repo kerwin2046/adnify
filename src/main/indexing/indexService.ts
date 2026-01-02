@@ -13,10 +13,27 @@ import {
   IndexConfig,
   IndexStatus,
   SearchResult,
-
   EmbeddingConfig,
   DEFAULT_INDEX_CONFIG,
 } from './types'
+
+/**
+ * Worker 响应消息类型（与 worker 中定义保持一致）
+ */
+interface WorkerProgressMessage { type: 'progress'; processed: number; total: number }
+interface WorkerResultMessage { type: 'result'; chunks: any[]; processed: number; total: number }
+interface WorkerUpdateResultMessage { type: 'update_result'; filePath: string; chunks: any[]; deleted: boolean }
+interface WorkerBatchUpdateResultMessage { type: 'batch_update_result'; results: Array<{ filePath: string; chunks: any[]; deleted: boolean }> }
+interface WorkerCompleteMessage { type: 'complete'; totalChunks: number }
+interface WorkerErrorMessage { type: 'error'; error: string }
+
+type WorkerMessage = 
+  | WorkerProgressMessage 
+  | WorkerResultMessage 
+  | WorkerUpdateResultMessage 
+  | WorkerBatchUpdateResultMessage
+  | WorkerCompleteMessage 
+  | WorkerErrorMessage
 
 export class CodebaseIndexService {
   private workspacePath: string
@@ -45,12 +62,12 @@ export class CodebaseIndexService {
     this.initWorker()
   }
 
-  private initWorker() {
+  private initWorker(): void {
     try {
       const workerPath = path.join(__dirname, 'indexer.worker.js')
       this.worker = new Worker(workerPath)
 
-      this.worker.on('message', async (message: any) => {
+      this.worker.on('message', async (message: WorkerMessage) => {
         switch (message.type) {
           case 'progress':
             this.status.indexedFiles = message.processed
@@ -59,7 +76,7 @@ export class CodebaseIndexService {
             break
 
           case 'result':
-            if (message.chunks && message.chunks.length > 0) {
+            if (message.chunks?.length > 0) {
               await this.vectorStore.addBatch(message.chunks)
               this.status.totalChunks += message.chunks.length
             }
@@ -71,31 +88,41 @@ export class CodebaseIndexService {
           case 'update_result':
             if (message.deleted) {
               await this.vectorStore.deleteFile(message.filePath)
-            } else if (message.chunks && message.chunks.length > 0) {
+            } else if (message.chunks?.length > 0) {
               await this.vectorStore.upsertFile(message.filePath, message.chunks)
             }
             logger.index.info(`[IndexService] Updated index for: ${message.filePath}`)
+            break
+
+          case 'batch_update_result':
+            for (const result of message.results) {
+              if (result.deleted) {
+                await this.vectorStore.deleteFile(result.filePath)
+              } else if (result.chunks?.length > 0) {
+                await this.vectorStore.upsertFile(result.filePath, result.chunks)
+              }
+            }
+            logger.index.info(`[IndexService] Batch updated ${message.results.length} files`)
             break
 
           case 'complete':
             this.status.isIndexing = false
             this.status.lastIndexedAt = Date.now()
             logger.index.info(`[IndexService] Indexing complete. Total chunks: ${this.status.totalChunks}`)
-            this.emitProgress(true) // 强制发送完成状态
+            this.emitProgress(true)
             break
 
           case 'error':
             logger.index.error('[IndexService] Worker error:', message.error)
             this.status.error = message.error
             this.status.isIndexing = false
-            this.emitProgress(true) // 强制发送错误状态
+            this.emitProgress(true)
             break
         }
       })
 
       this.worker.on('error', (err) => {
-        logger.index.error('[IndexService] Worker thread error (full):', err)
-        if (err.stack) logger.index.error(err.stack)
+        logger.index.error('[IndexService] Worker thread error:', err.message)
         this.status.error = err.message
         this.status.isIndexing = false
         this.emitProgress()
@@ -186,19 +213,17 @@ export class CodebaseIndexService {
     this.emitProgress()
 
     try {
-      // Fetch existing file hashes for incremental update
-      // Note: We don't clear() anymore by default, we let worker decide what to skip
-      // But if we want a fresh index, we might want a flag. 
-      // Assuming incremental by default now.
-      const existingHashes = await this.vectorStore.getFileHashes()
+      // 获取已有文件哈希用于增量更新
+      // Map 通过 postMessage 传递会变成空对象，需要转换为普通对象
+      const existingHashesMap = await this.vectorStore.getFileHashes()
+      const existingHashes: Record<string, string> = Object.fromEntries(existingHashesMap)
 
-      // 2. 发送给 Worker 处理 (Worker now handles file collection)
-      logger.index.info(`[IndexService] Starting indexing for ${this.workspacePath}...`)
+      logger.index.info(`[IndexService] Starting indexing for ${this.workspacePath} (${existingHashesMap.size} existing files)...`)
       this.worker?.postMessage({
         type: 'index',
         workspacePath: this.workspacePath,
         config: this.config,
-        existingHashes // Pass Map directly (Worker will receive it)
+        existingHashes
       })
 
     } catch (e) {
