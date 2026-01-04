@@ -140,10 +140,21 @@ export function VirtualFileTree({
   }, [expandedFolders, childrenCache, loadChildren])
 
   const shouldScrollRef = useRef(false)
+  // 是否需要同步文件位置（只在用户主动触发时）
+  const [shouldReveal, setShouldReveal] = useState(false)
 
-  // 监听 activeFilePath 变化，自动展开
+  // 监听 "Reveal in Explorer" 事件
   useEffect(() => {
-    if (!activeFilePath || !workspacePath) return
+    const handleReveal = () => {
+      setShouldReveal(true)
+    }
+    window.addEventListener('explorer:reveal-active-file', handleReveal)
+    return () => window.removeEventListener('explorer:reveal-active-file', handleReveal)
+  }, [])
+
+  // 只在用户主动触发 reveal 时才展开并滚动
+  useEffect(() => {
+    if (!shouldReveal || !activeFilePath || !workspacePath) return
 
     const syncFile = async () => {
       // 1. 确保所有父目录都已展开并加载
@@ -166,10 +177,11 @@ export function VirtualFileTree({
 
       // 标记需要滚动
       shouldScrollRef.current = true
+      setShouldReveal(false)
     }
 
     syncFile()
-  }, [activeFilePath, workspacePath, expandedFolders, loadChildren, expandFolder])
+  }, [shouldReveal, activeFilePath, workspacePath, expandedFolders, loadChildren, expandFolder])
 
   // 扁平化树结构（只包含可见节点）
   const flattenedNodes = useMemo(() => {

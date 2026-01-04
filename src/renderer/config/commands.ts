@@ -45,6 +45,10 @@ export const registerCoreCommands = () => {
         { id: 'workbench.action.toggleComposer', title: 'Toggle Composer', category: 'View', defaultKey: 'Ctrl+Shift+I' },
         { id: 'workbench.action.toggleDevTools', title: 'Toggle Developer Tools', category: 'Help', defaultKey: 'F12' },
         { id: 'workbench.action.closePanel', title: 'Close Panel', category: 'View', defaultKey: 'Escape' },
+        
+        // Explorer
+        { id: 'explorer.revealActiveFile', title: 'Reveal Active File in Explorer', category: 'File', defaultKey: 'Ctrl+Shift+E' },
+        
         { id: 'help.about', title: 'About', category: 'Help', defaultKey: '' },
     ]
 

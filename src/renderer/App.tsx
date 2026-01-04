@@ -424,6 +424,10 @@ function AppContent() {
       e.preventDefault()
       setShowAbout(true)
     }
+    else if (keybindingService.matches(e, 'explorer.revealActiveFile')) {
+      e.preventDefault()
+      window.dispatchEvent(new CustomEvent('explorer:reveal-active-file'))
+    }
   }, [setShowSettings, setTerminalVisible, terminalVisible, setDebugVisible, debugVisible, showCommandPalette, showKeyboardShortcuts, showQuickOpen, showComposer, showAbout, setShowQuickOpen, setShowAbout])
 
   useEffect(() => {
@@ -438,6 +442,9 @@ function AppContent() {
       }
       if (commandId === 'workbench.action.toggleDevTools') {
         window.electronAPI.toggleDevTools()
+      }
+      if (commandId === 'explorer.revealActiveFile') {
+        window.dispatchEvent(new CustomEvent('explorer:reveal-active-file'))
       }
     })
 

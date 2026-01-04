@@ -12,6 +12,7 @@ export const en = {
   'openFolder': 'Open Folder',
   'refresh': 'Refresh',
   'noFolderOpened': 'No folder opened',
+  'revealActiveFile': 'Reveal Active File',
 
   // Editor
   'welcome': 'Welcome to Adnify',

@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { FolderOpen, Plus, RefreshCw, FolderPlus, GitBranch, FilePlus, ExternalLink } from 'lucide-react'
+import { FolderOpen, Plus, RefreshCw, FolderPlus, GitBranch, FilePlus, ExternalLink, Crosshair } from 'lucide-react'
 import { useStore } from '@store'
 import { t } from '@renderer/i18n'
 import { joinPath } from '@utils/pathUtils'
@@ -28,10 +28,18 @@ export function ExplorerView() {
     isGitRepo,
     setIsGitRepo,
     expandFolder,
+    activeFilePath,
   } = useStore()
 
   const [creatingIn, setCreatingIn] = useState<{ path: string; type: 'file' | 'folder' } | null>(null)
   const [rootContextMenu, setRootContextMenu] = useState<{ x: number; y: number } | null>(null)
+
+  // Reveal active file in explorer
+  const handleRevealActiveFile = useCallback(() => {
+    if (activeFilePath) {
+      window.dispatchEvent(new CustomEvent('explorer:reveal-active-file'))
+    }
+  }, [activeFilePath])
 
   // 更新 Git 状态
   const updateGitStatus = useCallback(async () => {
@@ -176,6 +184,11 @@ export function ExplorerView() {
           {t('explorer', language)}
         </span>
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Tooltip content={t('revealActiveFile', language) || 'Reveal Active File'}>
+            <Button variant="icon" size="icon" onClick={handleRevealActiveFile} disabled={!activeFilePath} className="w-6 h-6">
+              <Crosshair className="w-3.5 h-3.5" />
+            </Button>
+          </Tooltip>
           <Tooltip content={t('newFile', language)}>
             <Button variant="icon" size="icon" onClick={() => handleRootCreate('file')} className="w-6 h-6">
               <FilePlus className="w-3.5 h-3.5" />

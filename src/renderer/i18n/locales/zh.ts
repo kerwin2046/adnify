@@ -12,6 +12,7 @@ export const zh = {
   'openFolder': '打开文件夹',
   'refresh': '刷新',
   'noFolderOpened': '未打开文件夹',
+  'revealActiveFile': '在资源管理器中显示',
 
   // Editor
   'welcome': '欢迎使用 Adnify',
