@@ -14,10 +14,9 @@ import { logger } from '@shared/utils/Logger'
 import { spawn, ChildProcess } from 'child_process'
 import * as path from 'path'
 import * as fs from 'fs'
-import { BrowserWindow, app } from 'electron'
+import { BrowserWindow } from 'electron'
 import { SERVICE_DEFAULTS } from '@shared/constants'
 import {
-  getLspBinDir,
   getInstalledServerPath,
   commandExists,
 } from './lsp/installer'
@@ -28,6 +27,7 @@ export type LanguageId =
   | 'typescript' | 'typescriptreact' | 'javascript' | 'javascriptreact'
   | 'html' | 'css' | 'scss' | 'less' | 'json' | 'jsonc'
   | 'python' | 'go' | 'rust' | 'cpp' | 'c' | 'vue'
+  | 'zig' | 'csharp'
 
 interface LspServerConfig {
   name: string
@@ -93,83 +93,33 @@ async function findNearestRoot(
   return undefined
 }
 
-// ============ 辅助函数 ============
-
-function findModulePath(moduleName: string, subPath: string): string | null {
-  const possiblePaths = [
-    // 优先检查 LSP 安装目录（用户自定义安装的）
-    path.join(getLspBinDir(), 'node_modules', moduleName, subPath),
-    // 检查项目 node_modules（开发模式）
-    path.join(process.cwd(), 'node_modules', moduleName, subPath),
-    path.join(__dirname, '..', '..', 'node_modules', moduleName, subPath),
-    path.join(__dirname, '..', 'node_modules', moduleName, subPath),
-    // 检查 app 目录（打包后）
-    path.join(app.getAppPath(), 'node_modules', moduleName, subPath),
-    // 检查 asar 包内
-    path.join(process.resourcesPath || '', 'app.asar', 'node_modules', moduleName, subPath),
-    path.join(process.resourcesPath || '', 'app', 'node_modules', moduleName, subPath),
-    // 检查 asar 解压目录（某些模块需要解压）
-    path.join(process.resourcesPath || '', 'app.asar.unpacked', 'node_modules', moduleName, subPath),
-  ]
-
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) {
-      logger.lsp.debug(`[LSP] Found ${moduleName} at: ${p}`)
-      return p
-    }
-  }
-  
-  logger.lsp.debug(`[LSP] ${moduleName} not found in any of:`, possiblePaths.slice(0, 3))
-  return null
-}
+// ============ 服务器命令获取函数 ============
+// 使用 installer.ts 中的 getInstalledServerPath 统一查找路径
 
 async function getTypeScriptServerCommand(): Promise<{ command: string; args: string[] } | null> {
-  // 先检查已安装的路径
-  let serverPath = getInstalledServerPath('typescript')
-
-  if (!serverPath) {
-    // 检查项目内的路径
-    serverPath =
-      findModulePath('typescript-language-server', 'lib/cli.mjs') ||
-      findModulePath('typescript-language-server', 'lib/cli.js')
+  const serverPath = getInstalledServerPath('typescript')
+  if (serverPath) {
+    logger.lsp.debug('[LSP Manager] TypeScript server path:', serverPath)
+    return { command: process.execPath, args: [serverPath, '--stdio'] }
   }
-
-  // 不自动安装，只返回找到的路径
-  logger.lsp.debug('[LSP Manager] TypeScript server path:', serverPath)
-  if (serverPath) return { command: process.execPath, args: [serverPath, '--stdio'] }
   return null
 }
 
 async function getHtmlServerCommand(): Promise<{ command: string; args: string[] } | null> {
-  let jsPath = getInstalledServerPath('html')
-
-  if (!jsPath) {
-    jsPath = findModulePath('vscode-langservers-extracted', 'bin/vscode-html-language-server.js')
-  }
-
-  if (jsPath) return { command: process.execPath, args: [jsPath, '--stdio'] }
+  const serverPath = getInstalledServerPath('html')
+  if (serverPath) return { command: process.execPath, args: [serverPath, '--stdio'] }
   return null
 }
 
 async function getCssServerCommand(): Promise<{ command: string; args: string[] } | null> {
-  let jsPath = getInstalledServerPath('css')
-
-  if (!jsPath) {
-    jsPath = findModulePath('vscode-langservers-extracted', 'bin/vscode-css-language-server.js')
-  }
-
-  if (jsPath) return { command: process.execPath, args: [jsPath, '--stdio'] }
+  const serverPath = getInstalledServerPath('css')
+  if (serverPath) return { command: process.execPath, args: [serverPath, '--stdio'] }
   return null
 }
 
 async function getJsonServerCommand(): Promise<{ command: string; args: string[] } | null> {
-  let jsPath = getInstalledServerPath('json')
-
-  if (!jsPath) {
-    jsPath = findModulePath('vscode-langservers-extracted', 'bin/vscode-json-language-server.js')
-  }
-
-  if (jsPath) return { command: process.execPath, args: [jsPath, '--stdio'] }
+  const serverPath = getInstalledServerPath('json')
+  if (serverPath) return { command: process.execPath, args: [serverPath, '--stdio'] }
   return null
 }
 
@@ -246,19 +196,47 @@ async function getClangdCommand(): Promise<{ command: string; args: string[] } |
 
 // Vue LSP (vue-language-server)
 async function getVueServerCommand(): Promise<{ command: string; args: string[] } | null> {
-  let jsPath = getInstalledServerPath('vue')
-
-  if (!jsPath) {
-    jsPath = findModulePath('@vue/language-server', 'bin/vue-language-server.js')
-  }
-
-  if (jsPath) return { command: process.execPath, args: [jsPath, '--stdio'] }
+  const serverPath = getInstalledServerPath('vue')
+  if (serverPath) return { command: process.execPath, args: [serverPath, '--stdio'] }
 
   // 尝试全局安装的 vue-language-server
   if (commandExists('vue-language-server')) {
     return { command: 'vue-language-server', args: ['--stdio'] }
   }
   
+  return null
+}
+
+// Zig LSP (zls)
+async function getZlsCommand(): Promise<{ command: string; args: string[] } | null> {
+  const zlsPath = getInstalledServerPath('zig')
+  if (zlsPath) return { command: zlsPath, args: [] }
+
+  if (commandExists('zls')) {
+    return { command: 'zls', args: [] }
+  }
+
+  return null
+}
+
+// C# LSP (csharp-ls)
+async function getCsharpLsCommand(): Promise<{ command: string; args: string[] } | null> {
+  const serverPath = getInstalledServerPath('csharp')
+  if (serverPath) return { command: serverPath, args: [] }
+
+  if (commandExists('csharp-ls')) {
+    return { command: 'csharp-ls', args: [] }
+  }
+
+  return null
+}
+
+// Deno LSP
+async function getDenoCommand(): Promise<{ command: string; args: string[] } | null> {
+  if (commandExists('deno')) {
+    return { command: 'deno', args: ['lsp'] }
+  }
+
   return null
 }
 
@@ -382,6 +360,38 @@ const LSP_SERVERS: LspServerConfig[] = [
         workspacePath,
         ['package-lock.json', 'bun.lockb', 'bun.lock', 'pnpm-lock.yaml', 'yarn.lock', 'package.json']
       )
+      return root || workspacePath
+    },
+  },
+  {
+    name: 'zig',
+    languages: ['zig'],
+    getCommand: getZlsCommand,
+    findRoot: async (filePath, workspacePath) => {
+      const fileDir = path.dirname(filePath)
+      const root = await findNearestRoot(fileDir, workspacePath, ['build.zig', 'build.zig.zon'])
+      return root || workspacePath
+    },
+  },
+  {
+    name: 'csharp',
+    languages: ['csharp'],
+    getCommand: getCsharpLsCommand,
+    findRoot: async (filePath, workspacePath) => {
+      const fileDir = path.dirname(filePath)
+      const root = await findNearestRoot(fileDir, workspacePath, ['*.sln', '*.csproj'])
+      return root || workspacePath
+    },
+  },
+  {
+    name: 'deno',
+    languages: ['typescript', 'javascript'], // Deno 项目中的 TS/JS
+    getCommand: getDenoCommand,
+    // Deno 项目检测：查找 deno.json 或 deno.jsonc
+    findRoot: async (filePath, workspacePath) => {
+      const fileDir = path.dirname(filePath)
+      const root = await findNearestRoot(fileDir, workspacePath, ['deno.json', 'deno.jsonc'])
+      // 如果找不到 deno.json，返回 workspacePath（但实际上不应该启动 Deno LSP）
       return root || workspacePath
     },
   },
@@ -691,7 +701,6 @@ class LspManager {
 
   /**
    * 等待指定文件的诊断信息
-   * 参考 OpenCode 的 waitForDiagnostics 实现
    */
   async waitForDiagnostics(uri: string): Promise<void> {
     return new Promise((resolve) => {
@@ -965,7 +974,6 @@ class LspManager {
 
   /**
    * 根据文件路径和语言获取最佳的工作区根目录
-   * 参考 OpenCode 的智能根目录检测
    */
   async findBestRoot(filePath: string, languageId: LanguageId, workspacePath: string): Promise<string> {
     const serverName = this.getServerForLanguage(languageId)

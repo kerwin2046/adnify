@@ -7,11 +7,7 @@ import { ipcMain } from 'electron'
 import { lspManager, LanguageId } from '../lspManager'
 import { 
   getLspServerStatus, 
-  installTypeScriptServer, 
-  installVscodeLanguageServers,
-  installPyright,
-  installVueServer,
-  installGopls,
+  installServer,
   installBasicServers,
   getLspBinDir,
   getDefaultLspBinDir,
@@ -35,9 +31,11 @@ const EXT_TO_LANGUAGE: Record<string, LanguageId> = {
   jsonc: 'jsonc',
   py: 'python',
   pyw: 'python',
-  // 新增语言支持
+  // Go
   go: 'go',
+  // Rust
   rs: 'rust',
+  // C/C++
   c: 'c',
   h: 'c',
   cpp: 'cpp',
@@ -45,7 +43,12 @@ const EXT_TO_LANGUAGE: Record<string, LanguageId> = {
   cxx: 'cpp',
   hpp: 'cpp',
   hxx: 'cpp',
+  // Vue
   vue: 'vue',
+  // Zig
+  zig: 'zig',
+  // C#
+  cs: 'csharp',
 }
 
 function getLanguageId(filePath: string): LanguageId | null {
@@ -453,22 +456,7 @@ export function registerLspHandlers(mainStore?: any): void {
 
   ipcMain.handle('lsp:installServer', async (_, serverType: string) => {
     try {
-      switch (serverType) {
-        case 'typescript':
-          return await installTypeScriptServer()
-        case 'html':
-        case 'css':
-        case 'json':
-          return await installVscodeLanguageServers()
-        case 'python':
-          return await installPyright()
-        case 'vue':
-          return await installVueServer()
-        case 'go':
-          return await installGopls()
-        default:
-          return { success: false, error: `Unknown server type: ${serverType}` }
-      }
+      return await installServer(serverType)
     } catch (error: any) {
       return { success: false, error: error.message }
     }

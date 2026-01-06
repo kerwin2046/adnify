@@ -225,11 +225,38 @@ export const LSP_SERVER_DEFINITIONS: LspServerDefinition[] = [
     {
         id: 'clangd',
         name: 'C / C++',
-        description: 'clangd (需要已安装)',
+        description: 'clangd (自动下载)',
         languages: ['c', 'cpp'],
         displayLanguages: ['C', 'C++'],
         builtin: false,
-        installable: false, // 需要用户自行安装
+        installable: true, // 从 GitHub 自动下载
+    },
+    {
+        id: 'zig',
+        name: 'Zig',
+        description: 'zls (自动下载，需要已安装 Zig)',
+        languages: ['zig'],
+        displayLanguages: ['Zig'],
+        builtin: false,
+        installable: true, // 从 GitHub 自动下载
+    },
+    {
+        id: 'csharp',
+        name: 'C#',
+        description: 'csharp-ls (需要 .NET SDK)',
+        languages: ['csharp'],
+        displayLanguages: ['C#'],
+        builtin: false,
+        installable: true, // 通过 dotnet tool 安装
+    },
+    {
+        id: 'deno',
+        name: 'Deno',
+        description: 'Deno LSP (需要已安装 Deno)',
+        languages: ['typescript', 'javascript'], // Deno 项目中的 TS/JS
+        displayLanguages: ['Deno'],
+        builtin: false,
+        installable: false, // 需要用户自行安装 Deno
     },
 ]
 
@@ -239,16 +266,14 @@ export const LSP_SERVER_DEFINITIONS: LspServerDefinition[] = [
 
 export const LSP_SUPPORTED_LANGUAGES = LSP_SERVER_DEFINITIONS.flatMap(s => s.languages) as readonly string[]
 
-// 可扩展支持（需要额外 LSP 服务器）
+// 可扩展支持（需要额外 LSP 服务器，暂未实现自动安装）
 export const LSP_EXTENSIBLE_LANGUAGES = [
     'java',    // jdtls
-    'csharp',  // omnisharp
     'kotlin',  // kotlin-language-server
     'swift',   // sourcekit-lsp
     'ruby',    // solargraph
     'php',     // intelephense
     'elixir',  // elixir-ls
-    'zig',     // zls
 ] as const
 
 /**
