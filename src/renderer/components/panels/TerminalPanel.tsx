@@ -24,7 +24,7 @@ const XTERM_STYLE = `
 .xterm .xterm-helper-textarea { padding: 0; border: 0; margin: 0; position: absolute; opacity: 0; left: -9999em; top: 0; width: 0; height: 0; z-index: -5; overflow: hidden; white-space: nowrap; }
 .xterm .composition-view { background: #000; color: #FFF; display: none; position: absolute; white-space: pre; z-index: 1; }
 .xterm .composition-view.active { display: block; }
-.xterm .xterm-viewport { background-color: #18181b; overflow-y: scroll; cursor: default; position: absolute; right: 0; left: 0; top: 0; bottom: 0; }
+.xterm .xterm-viewport { background-color: rgb(var(--background-secondary)); overflow-y: scroll; cursor: default; position: absolute; right: 0; left: 0; top: 0; bottom: 0; }
 .xterm .xterm-screen { position: relative; }
 .xterm .xterm-screen canvas { position: absolute; left: 0; top: 0; }
 .xterm .xterm-scroll-area { visibility: hidden; }
@@ -292,7 +292,7 @@ export default function TerminalPanel() {
                 <div className="absolute top-0 left-0 right-0 h-1 cursor-row-resize z-50 hover:bg-accent/50 transition-colors" onMouseDown={startResizing} />
                 
                 {/* 标题栏 */}
-                <div className="h-10 min-h-[40px] flex items-center justify-between border-b border-border-subtle bg-background/40 backdrop-blur-md select-none relative z-20">
+                <div className="h-10 min-h-[40px] flex items-center justify-between border-b border-border-subtle bg-background-secondary select-none relative z-20">
                     {/* 左侧：图标和标签页 */}
                     <div className="flex items-center flex-1 min-w-0 overflow-hidden h-full">
                         <div className="flex-shrink-0 flex items-center justify-center px-3 cursor-pointer hover:text-text-primary text-text-muted transition-colors h-full" onClick={() => setIsCollapsed(!isCollapsed)}>
@@ -369,7 +369,7 @@ export default function TerminalPanel() {
                 </div>
 
                 {/* 终端内容区域 */}
-                <div className={`flex-1 p-0 min-h-0 relative bg-surface/30 backdrop-blur-sm ${isCollapsed ? 'hidden' : 'block'}`}>
+                <div className={`flex-1 p-0 min-h-0 relative bg-background-secondary ${isCollapsed ? 'hidden' : 'block'}`}>
                     <div className={`h-full w-full ${isSplitView ? 'grid grid-cols-2 gap-1' : ''}`}>
                         {terminals.map(term => (
                             <div

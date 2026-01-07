@@ -128,14 +128,13 @@ export default function ChatInput({
     <div ref={inputContainerRef} className="p-4 z-20">
       <div
         className={`
-            relative group flex flex-col rounded-3xl transition-all duration-300 ease-out
+            relative group flex flex-col rounded-3xl transition-all duration-300 ease-out border backdrop-blur-xl
             ${isStreaming
-            ? 'bg-surface/50 border border-accent/20 ring-1 ring-accent/10'
+            ? 'bg-surface/80 border-accent/30 ring-1 ring-accent/20'
             : isFocused
-              ? 'bg-surface/80 border border-white/10 ring-1 ring-white/10 shadow-2xl shadow-black/20 transform -translate-y-0.5'
-              : 'bg-surface/40 border border-white/5 hover:bg-surface/60 hover:border-white/10 shadow-xl shadow-black/10'
+              ? 'bg-surface/80 border-border-active ring-1 ring-border-active shadow-2xl shadow-black/40 transform -translate-y-0.5'
+              : 'bg-surface/60 border-border hover:border-border-active shadow-xl shadow-black/20'
           }
-            backdrop-blur-xl
         `}
       >
         {/* Image Previews */}

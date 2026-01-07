@@ -26,7 +26,7 @@ export default function TitleBar() {
       <div className="flex-1 flex justify-center">
         <div
           onClick={() => setShowQuickOpen(true)}
-          className="no-drag flex items-center justify-center gap-2 px-3 py-1 rounded-md bg-surface/50 border border-white/5 hover:border-accent/30 hover:bg-surface hover:shadow-glow-sm transition-all cursor-pointer group w-96 text-xs backdrop-blur-sm"
+          className="no-drag flex items-center justify-center gap-2 px-3 py-1 rounded-md bg-surface/50 border border-border hover:border-accent/30 hover:bg-surface hover:shadow-glow-sm transition-all cursor-pointer group w-96 text-xs backdrop-blur-sm"
         >
           <Search className="w-3 h-3 text-text-muted group-hover:text-accent transition-colors" />
           <span className="text-text-muted group-hover:text-text-primary transition-colors">Search files...</span>

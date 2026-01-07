@@ -43,7 +43,7 @@ const WelcomePage = lazy(() => import('./components/welcome/WelcomePage'))
 const EditorSkeleton = memo(() => (
   <div className="h-full flex flex-col bg-background">
     {/* Tab bar skeleton */}
-    <div className="h-9 border-b border-border-subtle flex items-center px-2 gap-1">
+    <div className="h-9 border-b border-border flex items-center px-2 gap-1">
       <div className="h-6 w-24 bg-surface rounded animate-pulse" />
       <div className="h-6 w-20 bg-surface/50 rounded animate-pulse" />
     </div>
@@ -355,7 +355,7 @@ function AppContent() {
                 <div style={{ width: sidebarWidth }} className="flex-shrink-0 relative">
                   <Sidebar />
                   <div
-                    className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-accent/50 transition-colors z-50 translate-x-[2px]"
+                    className="absolute top-0 right-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 translate-x-[2px]"
                     onMouseDown={(e) => { e.preventDefault(); setIsResizingSidebar(true) }}
                   />
                 </div>
@@ -382,9 +382,9 @@ function AppContent() {
                   </ErrorBoundary>
                 </div>
 
-                <div style={{ width: chatWidth }} className="flex-shrink-0 relative border-l border-border-subtle">
+                <div style={{ width: chatWidth }} className="flex-shrink-0 relative border-l border-border">
                   <div
-                    className="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-accent/50 transition-colors z-50 -translate-x-[2px]"
+                    className="absolute top-0 left-0 w-1 h-full cursor-col-resize active:bg-accent transition-colors z-50 -translate-x-[2px]"
                     onMouseDown={(e) => { e.preventDefault(); setIsResizingChat(true) }}
                   />
                   <ErrorBoundary>

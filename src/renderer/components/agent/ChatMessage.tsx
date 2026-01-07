@@ -53,8 +53,8 @@ const CodeBlock = React.memo(({ language, children, fontSize }: { language: stri
   }, [children])
 
   return (
-    <div className="relative group/code my-3 rounded-lg overflow-hidden border border-white/5 bg-black/30 backdrop-blur-sm shadow-sm">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-white/5 border-b border-white/5">
+    <div className="relative group/code my-3 rounded-lg overflow-hidden border border-border bg-black/30 backdrop-blur-sm shadow-sm">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-white/5 border-b border-border">
         <span className="text-[10px] text-text-muted font-mono uppercase tracking-wider opacity-70">
           {language || 'text'}
         </span>
@@ -339,7 +339,7 @@ const ChatMessage = React.memo(({
   }
 
   return (
-    <div className={`w-full py-6 group transition-colors duration-200 border-b border-white/5 last:border-0 animate-fade-in`}>
+    <div className={`w-full py-6 group transition-colors duration-200 border-b border-border last:border-0 animate-fade-in`}>
       <div className="max-w-3xl mx-auto px-4">
         {/* Header Row: Avatar + Name + Time/Actions */}
         <div className="flex items-center gap-3 mb-3 select-none">

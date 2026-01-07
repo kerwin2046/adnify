@@ -474,7 +474,7 @@ export function VirtualFileTree({
         onContextMenu={(e) => handleContextMenu(e, node)}
         className={`
           group flex items-center gap-1.5 pr-2 cursor-pointer transition-all duration-200 relative select-none
-          ${isActive ? 'bg-accent/10 text-text-primary' : 'text-text-muted hover:text-text-primary hover:bg-white/5'}
+          ${isActive ? 'bg-surface-active/60 text-text-primary font-medium' : 'text-text-muted hover:text-text-primary hover:bg-surface-hover/40'}
         `}
         style={{
           height: ITEM_HEIGHT,
@@ -485,13 +485,13 @@ export function VirtualFileTree({
           right: 0
         }}
       >
-        {/* Active Indicator */}
-        {isActive && <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent" />}
+        {/* Active Indicator - Premium Glow */}
+        {isActive && <div className="absolute left-0 top-1.5 bottom-1.5 w-[3px] bg-accent rounded-r-full shadow-[0_0_8px_rgba(var(--accent)/0.6)]" />}
 
-        {/* Indent Guide */}
+        {/* Indent Guide - More subtle */}
         {depth > 0 && (
           <div
-            className="absolute top-0 bottom-0 border-l border-border-subtle group-hover:border-white/10"
+            className="absolute top-0 bottom-0 border-l border-border-subtle opacity-40 group-hover:opacity-100 transition-opacity"
             style={{ left: `${depth * 12}px` }}
           />
         )}

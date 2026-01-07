@@ -19,7 +19,7 @@ export default {
 					muted: 'rgb(var(--surface-muted) / <alpha-value>)',
 				},
 				border: {
-					DEFAULT: 'rgb(var(--border) / <alpha-value>)',
+					DEFAULT: 'rgb(var(--border) / <alpha-value>)', // Refined solid border
 					subtle: 'rgb(var(--border-subtle) / <alpha-value>)',
 					active: 'rgb(var(--border-active) / <alpha-value>)',
 				},
@@ -53,6 +53,12 @@ export default {
 					'text-muted': 'rgb(var(--text-muted) / <alpha-value>)',
 					accent: 'rgb(var(--accent) / <alpha-value>)',
 				}
+			},
+			borderRadius: {
+				lg: 'var(--radius-lg)',
+				md: 'var(--radius-md)',
+				sm: 'var(--radius-sm)',
+				full: 'var(--radius-full)',
 			},
 			fontFamily: {
 				sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],

@@ -668,7 +668,7 @@ export default function ChatPanel() {
 
   return (
     <div
-      className={`absolute inset-0 overflow-hidden bg-background transition-colors ${isDragging ? 'bg-accent/5 ring-2 ring-inset ring-accent' : ''}`}
+      className={`absolute inset-0 overflow-hidden bg-background-secondary transition-colors ${isDragging ? 'bg-accent/5 ring-2 ring-inset ring-accent' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -736,7 +736,7 @@ export default function ChatPanel() {
         )}
 
         {/* Header - 简洁版 */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between h-10 px-3 bg-background/60 backdrop-blur-xl border-b border-white/5 select-none transition-all duration-300">
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between h-10 px-3 bg-background/80 backdrop-blur-xl select-none transition-all duration-300">
           <div className="flex items-center gap-2">
             {/* 分支选择器 - 始终显示，点击展开分支管理 */}
             <BranchSelector language={language} onClick={() => setShowBranches(!showBranches)} />

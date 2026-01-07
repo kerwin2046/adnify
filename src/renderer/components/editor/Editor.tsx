@@ -759,7 +759,7 @@ export default function Editor() {
   return (
     <div className="h-full flex flex-col bg-transparent" onKeyDown={handleKeyDown}>
       {/* Tabs */}
-      <div className="h-9 flex items-center bg-background-secondary/50 border-b border-border-subtle overflow-x-auto custom-scrollbar select-none backdrop-blur-sm">
+      <div className="h-9 flex items-center bg-background-secondary border-b border-border-subtle overflow-x-auto custom-scrollbar select-none backdrop-blur-sm">
         {openFiles.map((file: { path: string; isDirty?: boolean }) => {
           const isActive = file.path === activeFilePath
           const fileName = getFileName(file.path)
