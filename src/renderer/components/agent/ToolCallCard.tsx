@@ -310,7 +310,11 @@ const ToolCallCard = memo(function ToolCallCard({
 
         {/* Title & Description */}
         <div className="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
-          <span className="text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors whitespace-nowrap">
+          <span className={`text-sm font-medium transition-colors whitespace-nowrap ${
+            (isStreaming || isRunning) 
+              ? 'text-shimmer' 
+              : 'text-text-secondary group-hover:text-text-primary'
+          }`}>
             {TOOL_LABELS[toolCall.name] || toolCall.name}
           </span>
 
@@ -321,7 +325,11 @@ const ToolCallCard = memo(function ToolCallCard({
               className="flex items-center gap-2 overflow-hidden"
             >
               <span className="text-text-muted/20">|</span>
-              <span className="text-xs text-text-muted truncate font-mono opacity-70">
+              <span className={`text-xs truncate font-mono ${
+                (isStreaming || isRunning) 
+                  ? 'text-shimmer' 
+                  : 'text-text-muted opacity-70'
+              }`}>
                 {description}
               </span>
             </motion.div>

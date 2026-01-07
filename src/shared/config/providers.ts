@@ -54,6 +54,18 @@ export interface ResponseConfig {
   argsIsObject?: boolean // 参数是否为对象（Anthropic 是 true，OpenAI 是 false）
 }
 
+/** 图片格式配置 */
+export interface ImageFormatConfig {
+  // 图片内容块的类型字段值，如 'image_url'、'image'
+  type: string
+  // 图片数据的包装结构，支持模板变量：{{url}}, {{base64}}, {{mediaType}}
+  // 例如 OpenAI: { url: '{{url}}' }
+  // 例如 Anthropic: { type: 'base64', media_type: '{{mediaType}}', data: '{{base64}}' }
+  wrapper: Record<string, unknown>
+  // 包装字段名，如 'image_url'、'source'
+  wrapperField: string
+}
+
 /** 消息格式配置（用于 custom 协议） */
 export interface MessageFormatConfig {
   // 系统消息处理
@@ -68,6 +80,11 @@ export interface MessageFormatConfig {
   // 助手消息中的工具调用
   assistantToolCallField: string // 如 'tool_calls'（OpenAI）或 'content'（Anthropic）
   assistantToolCallFormat: 'openai' | 'anthropic' // 工具调用格式
+
+  // 视觉支持
+  supportsVision?: boolean
+  // 图片格式配置（当 supportsVision 为 true 时使用）
+  imageFormat?: ImageFormatConfig
 }
 
 /** 工具格式配置（用于 custom 协议） */

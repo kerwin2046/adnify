@@ -122,6 +122,15 @@ body {
   background: transparent;
 }
 
+/* Hide scrollbar utility */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 /* --- Utilities --- */
 .drag-region { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
@@ -154,4 +163,96 @@ body {
 }
 .animate-fade-in {
   animation: fade-in 0.2s ease-out forwards;
+}
+
+/* Text Shimmer/Sweep Effect for running tool cards */
+@keyframes text-shimmer {
+  0% {
+    background-position: -100% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.text-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgb(var(--text-secondary)) 0%,
+    rgb(var(--text-secondary)) 40%,
+    rgb(var(--accent-subtle)) 50%,
+    rgb(var(--text-secondary)) 60%,
+    rgb(var(--text-secondary)) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer 2s ease-in-out infinite;
+}
+
+/* Scroll shadow for thinking block */
+.scroll-shadow-container {
+  position: relative;
+}
+
+.scroll-shadow-container::before,
+.scroll-shadow-container::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 24px;
+  pointer-events: none;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.scroll-shadow-container::before {
+  top: 0;
+  background: linear-gradient(to bottom, rgb(var(--background)) 0%, transparent 100%);
+}
+
+.scroll-shadow-container::after {
+  bottom: 0;
+  background: linear-gradient(to top, rgb(var(--background)) 0%, transparent 100%);
+}
+
+.scroll-shadow-container.shadow-top::before {
+  opacity: 1;
+}
+
+.scroll-shadow-container.shadow-bottom::after {
+  opacity: 1;
+}
+
+/* Thinking content fade-in animation */
+@keyframes thinking-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.thinking-line {
+  animation: thinking-line-in 0.3s ease-out forwards;
+}
+
+/* Thinking content - smooth fade in for streaming */
+.thinking-content {
+  animation: thinking-fade-in 0.15s ease-out;
+}
+
+@keyframes thinking-fade-in {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 1;
+  }
 }

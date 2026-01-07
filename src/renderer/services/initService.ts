@@ -16,6 +16,7 @@ import { adnifyDir } from './adnifyDirService'
 import { checkpointService } from '@renderer/agent/services/checkpointService'
 import { initDiagnosticsListener } from './diagnosticsStore'
 import { restoreWorkspaceState } from './workspaceStateService'
+import { mcpService } from './mcpService'
 
 export interface InitResult {
   success: boolean
@@ -99,6 +100,9 @@ async function restoreWorkspace(): Promise<boolean> {
   
   // 恢复编辑器状态
   await restoreWorkspaceState()
+  
+  // 初始化 MCP 服务
+  await mcpService.initialize(workspaceConfig.roots)
   
   startupMetrics.end('restore-workspace')
   return true

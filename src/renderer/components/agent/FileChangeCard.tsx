@@ -200,7 +200,11 @@ export default function FileChangeCard({
 
                 {/* Title & Stats */}
                 <div className="flex-1 min-w-0 flex items-center gap-2 overflow-hidden">
-                    <span className="text-sm font-medium text-text-secondary group-hover:text-text-primary transition-colors truncate">
+                    <span className={`text-sm font-medium transition-colors truncate ${
+                        (isStreaming || isRunning) 
+                            ? 'text-shimmer' 
+                            : 'text-text-secondary group-hover:text-text-primary'
+                    }`}>
                         {fileName}
                     </span>
 
