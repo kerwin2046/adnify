@@ -92,7 +92,7 @@ export class ToolExecutionService {
         fullPath = filePath.startsWith(workspacePath) ? filePath : `${workspacePath}/${filePath}`
         originalContent = await api.file.read(fullPath)
         store.addSnapshotToCurrentCheckpoint(fullPath, originalContent)
-        
+
         // 启动流式编辑追踪
         streamingEditId = streamingEditService.startEdit(fullPath, originalContent || '')
         logger.agent.debug(`[ToolExecutionService] Started streaming edit for ${fullPath}, editId: ${streamingEditId}`)
@@ -105,12 +105,17 @@ export class ToolExecutionService {
     // 结束性能监控
     performanceMonitor.end(timerName, result.success)
 
+    // 计算执行时间
+    const duration = Date.now() - startTime
+
     // 记录执行日志
     useStore.getState().addToolCallLog({
       type: 'response',
       toolName: name,
       data: { success: result.success, result: result.result?.slice?.(0, 500), error: result.error },
-      duration: Date.now() - startTime
+      duration,
+      success: result.success,
+      error: result.error,
     })
 
     // 更新工具状态
