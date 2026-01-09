@@ -70,16 +70,25 @@ export default function EditorContextMenu({ x, y, editor, onClose }: EditorConte
         }
       }
     }
+
+    // 监听右键菜单事件（防止在其他地方右键时不关闭）
+    const handleContextMenu = () => {
+      onClose()
+    }
     
-    // 延迟添加 mousedown 监听，避免右键点击时立即触发关闭
+    // 延迟添加监听，避免右键点击时立即触发关闭
     const timeoutId = setTimeout(() => {
-      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('mousedown', handleClickOutside, true)
+      document.addEventListener('click', handleClickOutside, true)
+      document.addEventListener('contextmenu', handleContextMenu, true)
     }, 0)
     document.addEventListener('keydown', handleKeyDown)
     
     return () => {
       clearTimeout(timeoutId)
-      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('mousedown', handleClickOutside, true)
+      document.removeEventListener('click', handleClickOutside, true)
+      document.removeEventListener('contextmenu', handleContextMenu, true)
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [onClose, callHierarchyResult])

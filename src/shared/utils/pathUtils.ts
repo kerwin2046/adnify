@@ -53,11 +53,12 @@ export function validatePath(
 // ============ 基础路径函数 ============
 
 export function normalizePath(path: string): string {
-  return path.replace(/\\/g, '/').toLowerCase()
+  return path.replace(/\\/g, '/')
 }
 
+/** 路径比较（忽略大小写和分隔符差异） */
 export function pathEquals(path1: string, path2: string): boolean {
-  return normalizePath(path1) === normalizePath(path2)
+  return normalizePath(path1).toLowerCase() === normalizePath(path2).toLowerCase()
 }
 
 export function pathStartsWith(path: string, prefix: string): boolean {

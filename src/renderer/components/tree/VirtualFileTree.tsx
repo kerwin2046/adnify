@@ -18,7 +18,7 @@ import {
 import { useStore } from '@store'
 import type { FileItem } from '@shared/types'
 import { t } from '@renderer/i18n'
-import { getDirPath, joinPath } from '@shared/utils/pathUtils'
+import { getDirPath, joinPath, pathEquals, normalizePath } from '@shared/utils/pathUtils'
 import { toast } from '../common/ToastProvider'
 import { Input, ContextMenu, ContextMenuItem } from '../ui'
 import { directoryCacheService } from '@services/directoryCacheService'
@@ -141,49 +141,85 @@ export function VirtualFileTree({
     })
   }, [expandedFolders, childrenCache, loadChildren])
 
-  const shouldScrollRef = useRef(false)
-  // 是否需要同步文件位置（只在用户主动触发时）
-  const [shouldReveal, setShouldReveal] = useState(false)
+  // 滚动到指定文件的状态（使用文件路径作为触发器）
+  const [scrollToFile, setScrollToFile] = useState<string | null>(null)
+
+  // 加载目录并返回子项（直接返回，不依赖状态更新）
+  const loadDirectoryChildren = useCallback(async (dirPath: string): Promise<FileItem[]> => {
+    // 先检查缓存
+    const cached = childrenCache.get(dirPath)
+    if (cached) return cached
+
+    try {
+      const children = await directoryCacheService.getDirectory(dirPath)
+      // 更新缓存状态
+      setChildrenCache((prev) => new Map(prev).set(dirPath, children))
+      return children
+    } catch {
+      return []
+    }
+  }, [childrenCache])
+
+  // 展开文件所在的所有父目录
+  const revealFile = useCallback(async (filePath: string) => {
+    if (!workspacePath) return
+
+    const normalizedFilePath = normalizePath(filePath)
+    const normalizedWorkspace = normalizePath(workspacePath)
+
+    // 收集需要展开的目录路径（从工作区根目录开始，到文件的直接父目录）
+    const pathsToExpand: string[] = []
+    let currentPath = getDirPath(normalizedFilePath)
+
+    while (currentPath && currentPath.length > normalizedWorkspace.length) {
+      pathsToExpand.unshift(currentPath)
+      const parentPath = getDirPath(currentPath)
+      if (parentPath === currentPath) break
+      currentPath = parentPath
+    }
+
+    // 从根目录的 items 开始，逐级查找并展开
+    let currentItems: FileItem[] = items
+    const pathsToExpandActual: string[] = []
+
+    for (const normalizedPath of pathsToExpand) {
+      // 在当前层级的 items 中查找匹配的目录
+      const targetDir = currentItems.find(item => 
+        item.isDirectory && pathEquals(item.path, normalizedPath)
+      )
+
+      if (targetDir) {
+        pathsToExpandActual.push(targetDir.path)
+        
+        // 展开该目录
+        const isExpanded = expandedFolders.has(targetDir.path)
+        if (!isExpanded) {
+          expandFolder(targetDir.path)
+        }
+
+        // 加载子目录内容（直接获取返回值，不等待状态更新）
+        currentItems = await loadDirectoryChildren(targetDir.path)
+      } else {
+        // 找不到匹配的目录，可能路径格式不一致，尝试直接使用 normalized 路径
+        pathsToExpandActual.push(normalizedPath)
+        expandFolder(normalizedPath)
+        currentItems = await loadDirectoryChildren(normalizedPath)
+      }
+    }
+
+    setScrollToFile(filePath)
+  }, [workspacePath, items, expandedFolders, expandFolder, loadDirectoryChildren])
 
   // 监听 "Reveal in Explorer" 事件
   useEffect(() => {
     const handleReveal = () => {
-      setShouldReveal(true)
+      if (activeFilePath && workspacePath) {
+        revealFile(activeFilePath)
+      }
     }
     window.addEventListener('explorer:reveal-active-file', handleReveal)
     return () => window.removeEventListener('explorer:reveal-active-file', handleReveal)
-  }, [])
-
-  // 只在用户主动触发 reveal 时才展开并滚动
-  useEffect(() => {
-    if (!shouldReveal || !activeFilePath || !workspacePath) return
-
-    const syncFile = async () => {
-      // 1. 确保所有父目录都已展开并加载
-      let currentPath = getDirPath(activeFilePath)
-      const pathsToExpand: string[] = []
-
-      while (currentPath && currentPath.length >= workspacePath.length) {
-        if (currentPath === workspacePath) break
-        pathsToExpand.unshift(currentPath)
-        currentPath = getDirPath(currentPath)
-      }
-
-      // 逐级展开并加载
-      for (const path of pathsToExpand) {
-        if (!expandedFolders.has(path)) {
-          expandFolder(path)
-          await loadChildren(path)
-        }
-      }
-
-      // 标记需要滚动
-      shouldScrollRef.current = true
-      setShouldReveal(false)
-    }
-
-    syncFile()
-  }, [shouldReveal, activeFilePath, workspacePath, expandedFolders, loadChildren, expandFolder])
+  }, [activeFilePath, workspacePath, revealFile])
 
   // 扁平化树结构（只包含可见节点）
   const flattenedNodes = useMemo(() => {
@@ -234,23 +270,22 @@ export function VirtualFileTree({
     return result
   }, [items, expandedFolders, childrenCache, creatingIn, workspacePath])
 
-  // 处理滚动
+  // 处理滚动到目标文件（必须在 flattenedNodes 定义之后）
   useEffect(() => {
-    if (shouldScrollRef.current && activeFilePath) {
-      const index = flattenedNodes.findIndex(node => node.item.path === activeFilePath)
-      if (index !== -1 && containerRef.current) {
-        const top = index * ITEM_HEIGHT
-        // 如果不在可见范围内，则滚动
-        if (top < scrollTop || top > scrollTop + containerHeight - ITEM_HEIGHT) {
-          containerRef.current.scrollTo({
-            top: Math.max(0, top - containerHeight / 2), // 滚动到中间
-            behavior: 'smooth'
-          })
-        }
-        shouldScrollRef.current = false
-      }
+    if (!scrollToFile) return
+
+    const index = flattenedNodes.findIndex(node => pathEquals(node.item.path, scrollToFile))
+
+    if (index !== -1 && containerRef.current) {
+      const top = index * ITEM_HEIGHT
+      containerRef.current.scrollTo({
+        top: Math.max(0, top - containerHeight / 2),
+        behavior: 'smooth'
+      })
     }
-  }, [flattenedNodes, activeFilePath, scrollTop, containerHeight])
+
+    setScrollToFile(null)
+  }, [scrollToFile, flattenedNodes, containerHeight])
 
   // 计算可见范围
   const visibleRange = useMemo(() => {
