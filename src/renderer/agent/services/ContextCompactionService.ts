@@ -1,26 +1,22 @@
 /**
  * 上下文压缩服务
- * 使用 LLM 生成对话摘要，实现智能上下文压缩
+ * 
+ * 职责：使用 LLM 生成对话摘要
+ * 与 ContextManager 配合，提供更高质量的摘要
  */
 
 import { api } from '@/renderer/services/electronAPI'
 import { logger } from '@utils/Logger'
 import { useAgentStore } from '../store/AgentStore'
-import { ChatMessage } from '../types'
-import {
-  COMPACT_CONFIG,
-  buildCompactPrompt,
-  prepareMessagesForCompact,
-  calculateSavings,
-} from '../utils/ContextCompressor'
+import { ChatMessage, isAssistantMessage, TextContent, ToolCallPart } from '../types'
+import { estimateTokens } from '../context/TokenEstimator'
+import { getAgentConfig } from '../utils/AgentConfig'
 
-// 压缩状态
+/** 压缩状态 */
 interface CompactionState {
   isCompacting: boolean
   lastCompactedAt: number | null
   summary: string | null
-  compactedMessageCount: number
-  // 增量压缩：记录已压缩的消息 ID
   compactedMessageIds: Set<string>
 }
 
@@ -29,112 +25,76 @@ class ContextCompactionServiceClass {
     isCompacting: false,
     lastCompactedAt: null,
     summary: null,
-    compactedMessageCount: 0,
     compactedMessageIds: new Set(),
   }
 
-  // 压缩请求队列（防止并发压缩）
   private compactionQueue: Promise<string | null> | null = null
 
-  /**
-   * 获取当前摘要
-   */
   getSummary(): string | null {
     return this.state.summary
   }
 
-  /**
-   * 检查是否正在压缩
-   */
   isCompacting(): boolean {
     return this.state.isCompacting
   }
 
   /**
-   * 获取压缩统计
-   */
-  getStats(): { lastCompactedAt: number | null; compactedMessageCount: number } {
-    return {
-      lastCompactedAt: this.state.lastCompactedAt,
-      compactedMessageCount: this.state.compactedMessageCount,
-    }
-  }
-
-  /**
-   * 请求压缩上下文
-   * 如果已有压缩任务在进行，返回该任务的结果
+   * 请求 LLM 生成摘要
    */
   async requestCompaction(messages: ChatMessage[]): Promise<string | null> {
-    // 如果已有压缩任务，等待其完成
     if (this.compactionQueue) {
       return this.compactionQueue
     }
 
-    // 创建新的压缩任务
     this.compactionQueue = this.doCompaction(messages)
 
     try {
-      const result = await this.compactionQueue
-      return result
+      return await this.compactionQueue
     } finally {
       this.compactionQueue = null
     }
   }
 
-  /**
-   * 执行压缩
-   */
   private async doCompaction(messages: ChatMessage[]): Promise<string | null> {
     if (this.state.isCompacting) {
-      logger.agent.warn('[ContextCompaction] Already compacting, skipping')
       return this.state.summary
     }
 
-    const { messagesToCompact, recentMessages: _recentMessages, importantMessages: _importantMessages } = prepareMessagesForCompact(messages)
-
-    // 如果没有需要压缩的消息，直接返回
-    if (messagesToCompact.length === 0) {
-      return this.state.summary
-    }
-
-    // 增量压缩：只处理未压缩过的消息
-    const newMessages = messagesToCompact.filter(m => !this.state.compactedMessageIds.has(m.id))
+    // 过滤出需要压缩的消息
+    const config = getAgentConfig()
+    const keepCount = config.keepRecentTurns * 2
     
+    if (messages.length <= keepCount) {
+      return this.state.summary
+    }
+
+    const messagesToCompact = messages.slice(0, -keepCount)
+    const newMessages = messagesToCompact.filter(m => !this.state.compactedMessageIds.has(m.id))
+
     if (newMessages.length === 0 && this.state.summary) {
-      logger.agent.info('[ContextCompaction] No new messages to compact, using existing summary')
       return this.state.summary
     }
 
     this.state.isCompacting = true
-    this.updateStoreCompactingState(true)
-    logger.agent.info(`[ContextCompaction] Starting compaction of ${newMessages.length} new messages (${messagesToCompact.length} total)`)
+    logger.agent.info(`[ContextCompaction] Compacting ${newMessages.length} messages`)
 
     try {
-      // 构建压缩提示词，传入已有摘要让 LLM 整合
-      const prompt = buildCompactPrompt(newMessages, this.state.summary || undefined)
-
-      // 调用 LLM 生成摘要
-      const summary = await this.callLLMForSummary(prompt)
+      const prompt = this.buildPrompt(newMessages, this.state.summary)
+      const summary = await this.callLLM(prompt)
 
       if (summary) {
-        // 计算节省的 Token
-        const savings = calculateSavings(messagesToCompact, summary)
-        logger.agent.info(
-          `[ContextCompaction] Completed: ${savings.savedTokens} tokens saved (${savings.savedPercent}%)`
-        )
-
-        // 更新状态
         this.state.summary = summary
         this.state.lastCompactedAt = Date.now()
-        this.state.compactedMessageCount += newMessages.length
         
-        // 记录已压缩的消息 ID
         for (const msg of messagesToCompact) {
           this.state.compactedMessageIds.add(msg.id)
         }
 
-        // 保存到 store（用于持久化）
-        this.saveSummaryToStore(summary)
+        useAgentStore.getState().setContextSummary(summary)
+        
+        const originalTokens = estimateTokens(messagesToCompact.map(m => this.getMessageText(m)).join(''))
+        const savedTokens = originalTokens - estimateTokens(summary)
+        logger.agent.info(`[ContextCompaction] Saved ${savedTokens} tokens`)
 
         return summary
       }
@@ -145,56 +105,76 @@ class ContextCompactionServiceClass {
       return null
     } finally {
       this.state.isCompacting = false
-      this.updateStoreCompactingState(false)
     }
   }
 
-  /**
-   * 更新 store 中的压缩状态
-   */
-  private updateStoreCompactingState(isCompacting: boolean): void {
-    const store = useAgentStore.getState() as any
-    if (store.setIsCompacting) {
-      store.setIsCompacting(isCompacting)
+  private getMessageText(msg: ChatMessage): string {
+    if (!('content' in msg)) return ''
+    const content = msg.content
+    if (typeof content === 'string') return content
+    if (Array.isArray(content)) {
+      return content.filter((p): p is TextContent => p.type === 'text').map(p => p.text).join('\n')
     }
+    return ''
   }
 
-  /**
-   * 调用 LLM 生成摘要
-   */
-  private async callLLMForSummary(prompt: string): Promise<string | null> {
+  private buildPrompt(messages: ChatMessage[], existingSummary?: string | null): string {
+    const summaries = messages.map(msg => {
+      const role = msg.role === 'user' ? 'User' : msg.role === 'assistant' ? 'Assistant' : 'Tool'
+      const content = this.getMessageText(msg)
+
+      if (msg.role === 'tool') {
+        return `[${role}]: ${content.slice(0, 200)}${content.length > 200 ? '...' : ''}`
+      }
+
+      if (isAssistantMessage(msg) && msg.parts) {
+        const toolCalls = msg.parts
+          .filter((p): p is ToolCallPart => p.type === 'tool_call')
+          .map(p => p.toolCall.name)
+        if (toolCalls.length > 0) {
+          return `[${role}] Used: ${toolCalls.join(', ')}. ${content.slice(0, 300)}`
+        }
+      }
+
+      return `[${role}]: ${content.slice(0, 500)}${content.length > 500 ? '...' : ''}`
+    }).join('\n\n')
+
+    const existingContext = existingSummary 
+      ? `\n\nPrevious Summary:\n${existingSummary}\n`
+      : ''
+
+    return `Summarize this conversation (max 2000 chars).${existingContext}
+Focus on: user goals, key decisions, modified files, errors.
+
+Conversation:
+${summaries}
+
+Summary:`
+  }
+
+  private async callLLM(prompt: string): Promise<string | null> {
     try {
-      // 从主 store 获取 LLM 配置
       const { useStore } = await import('@store')
       const state = useStore.getState()
       const llmConfig = state.llmConfig
       const providerConfigs = state.providerConfigs
-      
-      if (!llmConfig?.apiKey) {
-        // 尝试从 providerConfigs 获取 apiKey
-        const providerConfig = providerConfigs[llmConfig.provider]
-        if (!providerConfig?.apiKey) {
-          logger.agent.warn('[ContextCompaction] No API key configured')
-          return null
-        }
+
+      const apiKey = llmConfig?.apiKey || providerConfigs[llmConfig?.provider]?.apiKey
+      if (!apiKey) {
+        logger.agent.warn('[ContextCompaction] No API key')
+        return null
       }
 
-      // 构建完整的配置，确保包含 adapterConfig
-      const fullConfig = {
-        ...llmConfig,
-        apiKey: llmConfig.apiKey || providerConfigs[llmConfig.provider]?.apiKey || '',
-        maxTokens: 1000, // 摘要不需要太长
-        temperature: 0.3, // 低温度保证一致性
-      }
-
-      // 使用独立的压缩 API（不与主对话冲突）
       const result = await api.llm.compactContext({
-        config: fullConfig,
-        messages: [
-          { role: 'user', content: prompt }
-        ],
-        tools: [], // 不需要工具
-        systemPrompt: 'You are a helpful assistant that summarizes conversations concisely. Output only the summary, no extra text.',
+        config: {
+          ...llmConfig,
+          apiKey,
+          maxTokens: 1000,
+          temperature: 0.3,
+        },
+        messages: [{ role: 'user', content: prompt }],
+        tools: [],
+        systemPrompt: 'Summarize conversations concisely. Output only the summary.',
       })
 
       if (result.error) {
@@ -202,26 +182,27 @@ class ContextCompactionServiceClass {
         return null
       }
 
-      // 截断到最大长度
       const content = result.content || ''
-      const truncated = content.length > COMPACT_CONFIG.maxSummaryChars
-        ? content.slice(0, COMPACT_CONFIG.maxSummaryChars) + '...'
-        : content
-
-      return truncated || null
+      return content.length > 2000 ? content.slice(0, 2000) + '...' : content || null
     } catch (error) {
-      logger.agent.error('[ContextCompaction] callLLMForSummary error:', error)
+      logger.agent.error('[ContextCompaction] Error:', error)
       return null
     }
   }
 
-  /**
-   * 保存摘要到 store
-   */
-  private saveSummaryToStore(summary: string): void {
-    const store = useAgentStore.getState() as any
-    if (store.setContextSummary) {
-      store.setContextSummary(summary)
+  clearSummary(): void {
+    this.state.summary = null
+    this.state.compactedMessageIds.clear()
+    this.state.lastCompactedAt = null
+    useAgentStore.getState().setContextSummary('')
+  }
+
+  reset(): void {
+    this.state = {
+      isCompacting: false,
+      lastCompactedAt: null,
+      summary: null,
+      compactedMessageIds: new Set(),
     }
   }
 
@@ -237,35 +218,21 @@ class ContextCompactionServiceClass {
   }
 
   /**
-   * 清除摘要
+   * 获取压缩统计
    */
-  clearSummary(): void {
-    this.state.summary = null
-    this.state.compactedMessageCount = 0
-    this.state.compactedMessageIds.clear()
-    this.state.lastCompactedAt = null
-    this.saveSummaryToStore('')
-    logger.agent.info('[ContextCompaction] Summary cleared')
-  }
-
-  /**
-   * 重置状态（线程切换时调用）
-   */
-  reset(): void {
-    this.state = {
-      isCompacting: false,
-      lastCompactedAt: null,
-      summary: null,
-      compactedMessageCount: 0,
-      compactedMessageIds: new Set(),
+  getStats(): { lastCompactedAt: number | null; compactedMessageCount: number } {
+    return {
+      lastCompactedAt: this.state.lastCompactedAt,
+      compactedMessageCount: this.state.compactedMessageIds.size,
     }
-    logger.agent.info('[ContextCompaction] State reset')
   }
 
   /**
-   * 强制压缩（忽略阈值检查）
+   * 强制压缩
    */
   async forceCompaction(messages: ChatMessage[]): Promise<string | null> {
+    // 清除已压缩记录，强制重新压缩
+    this.state.compactedMessageIds.clear()
     return this.doCompaction(messages)
   }
 }

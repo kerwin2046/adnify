@@ -989,6 +989,11 @@ export function isWriteTool(toolName: string): boolean {
     return TOOL_CONFIGS[toolName]?.category === 'write'
 }
 
+/** 检查工具是否为文件编辑工具（会产生文件内容变更，不包括删除） */
+export function isFileEditTool(toolName: string): boolean {
+    return ['edit_file', 'write_file', 'create_file_or_folder', 'replace_file_content'].includes(toolName)
+}
+
 /** 获取工具元数据 */
 export function getToolMetadata(toolName: string): ToolConfig | undefined {
     return TOOL_CONFIGS[toolName]

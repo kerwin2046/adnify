@@ -6,7 +6,7 @@
 import { logger } from '@utils/Logger'
 import { normalizePath } from '@shared/utils/pathUtils'
 import { LLMToolCall } from '@/renderer/types/electron'
-import { getReadOnlyTools, getParallelTools } from '@/shared/config/tools'
+import { getReadOnlyTools, getParallelTools, isWriteTool } from '@/shared/config/tools'
 import { toolExecutionService, ToolExecutionContext } from './ToolExecutionService'
 
 // 只读工具集合（缓存以提高性能）
@@ -47,11 +47,11 @@ function analyzeToolDependencies(toolCalls: LLMToolCall[]): ToolDependencyAnalys
   for (const tc of toolCalls) {
     const isParallel = parallelTools.includes(tc.name)
     const isReadTool = READ_ONLY_SET.has(tc.name)
-    const isWriteTool = !isReadTool && ['edit_file', 'write_file', 'create_file_or_folder', 'delete_file_or_folder'].includes(tc.name)
+    const isWrite = isWriteTool(tc.name)
 
     if (isReadTool && isParallel) {
       readTools.push(tc)
-    } else if (isWriteTool) {
+    } else if (isWrite) {
       // 按文件路径分组写操作
       const targetPath = getToolTargetPath(tc)
       if (targetPath) {

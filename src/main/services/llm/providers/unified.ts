@@ -675,9 +675,31 @@ export class UnifiedProvider extends BaseProvider {
       }
     }
 
+    // 收集连续的工具结果，用于合并到同一个 function 消息
+    let pendingToolResults: Array<{ name: string; result: string }> = []
+
+    const flushToolResults = () => {
+      if (pendingToolResults.length > 0) {
+        // Gemini 支持在一个 function 消息中包含多个 functionResponse
+        history.push({
+          role: 'function',
+          parts: pendingToolResults.map(tr => ({
+            functionResponse: {
+              name: tr.name,
+              response: { result: tr.result },
+            },
+          })),
+        })
+        pendingToolResults = []
+      }
+    }
+
     for (let i = startIndex; i < messages.length; i++) {
       const msg = messages[i]
+      
       if (msg.role === 'user') {
+        flushToolResults() // 先处理待处理的工具结果
+        
         const isLastUser = messages.slice(i + 1).every((m) => m.role !== 'user')
         if (isLastUser) {
           lastUserMessage = contentToString(msg.content)
@@ -688,40 +710,77 @@ export class UnifiedProvider extends BaseProvider {
           })
         }
       } else if (msg.role === 'assistant') {
-        if (msg.toolName) {
-          history.push({
-            role: 'model',
-            parts: [
-              {
-                functionCall: {
-                  name: msg.toolName,
-                  args: JSON.parse(contentToString(msg.content)),
-                },
+        flushToolResults() // 先处理待处理的工具结果
+        
+        // 检查是否有工具调用（通过 toolCalls 字段或 toolName）
+        const toolCalls = (msg as any).toolCalls as Array<{ name: string; arguments: Record<string, unknown> }> | undefined
+        
+        if (toolCalls && toolCalls.length > 0) {
+          // 多个工具调用：合并到同一个 model 消息
+          const parts: any[] = []
+          
+          // 如果有文本内容，先添加
+          const textContent = contentToString(msg.content)
+          if (textContent && textContent.trim()) {
+            parts.push({ text: textContent })
+          }
+          
+          // 添加所有工具调用
+          for (const tc of toolCalls) {
+            parts.push({
+              functionCall: {
+                name: tc.name,
+                args: tc.arguments,
               },
-            ],
-          })
+            })
+          }
+          
+          history.push({ role: 'model', parts })
+        } else if (msg.toolName) {
+          // 单个工具调用（旧格式兼容）
+          try {
+            const args = JSON.parse(contentToString(msg.content))
+            history.push({
+              role: 'model',
+              parts: [
+                {
+                  functionCall: {
+                    name: msg.toolName,
+                    args,
+                  },
+                },
+              ],
+            })
+          } catch {
+            // JSON 解析失败，作为普通文本处理
+            history.push({
+              role: 'model',
+              parts: [{ text: contentToString(msg.content) }],
+            })
+          }
         } else {
-          history.push({
-            role: 'model',
-            parts: [{ text: contentToString(msg.content) }],
-          })
+          // 普通文本消息
+          const text = contentToString(msg.content)
+          if (text && text.trim()) {
+            history.push({
+              role: 'model',
+              parts: [{ text }],
+            })
+          }
         }
       } else if (msg.role === 'tool') {
-        history.push({
-          role: 'function',
-          parts: [
-            {
-              functionResponse: {
-                name: msg.toolName || '',
-                response: { result: contentToString(msg.content) },
-              },
-            },
-          ],
+        // 收集工具结果，稍后合并
+        pendingToolResults.push({
+          name: msg.toolName || '',
+          result: contentToString(msg.content),
         })
       }
     }
 
-    // 确保历史以用户消息开始
+    // 处理剩余的工具结果
+    flushToolResults()
+
+    // 确保历史以用户消息开始（Gemini 要求）
     if (history.length > 0 && history[0].role !== 'user') {
       history.unshift({
         role: 'user',
@@ -729,11 +788,24 @@ export class UnifiedProvider extends BaseProvider {
       })
     }
 
+    // 确保 user 和 model 消息交替出现（Gemini 要求）
+    // 合并连续的同角色消息
+    const mergedHistory: Content[] = []
+    for (const msg of history) {
+      const lastMsg = mergedHistory[mergedHistory.length - 1]
+      if (lastMsg && lastMsg.role === msg.role && msg.role !== 'function') {
+        // 合并同角色消息
+        lastMsg.parts = [...lastMsg.parts, ...msg.parts]
+      } else {
+        mergedHistory.push(msg)
+      }
+    }
+
     if (!lastUserMessage) {
       lastUserMessage = 'Continue.'
     }
 
-    return { history, lastUserMessage }
+    return { history: mergedHistory, lastUserMessage }
   }
 
   // ============================================

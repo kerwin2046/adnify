@@ -202,23 +202,35 @@ export const toolExecutors: Record<string, (args: Record<string, unknown>, ctx: 
         const result = smartReplace(normalizedContent, normalizedOld, normalizedNew, replaceAll)
 
         if (!result.success) {
-            // 提供更详细的错误信息
+            // 使用增强的错误分析
+            const { findSimilarContent, analyzeEditError, generateFixSuggestion } = await import('../utils/EditRetryStrategy')
+            
+            const errorType = analyzeEditError(result.error || '')
             const hasCache = AgentService.hasValidFileCache(path)
+            
+            // 查找相似内容
+            const similar = findSimilarContent(normalizedContent, normalizedOld)
+            
+            // 生成详细的修复建议
+            const suggestion = generateFixSuggestion(errorType, {
+                path,
+                oldString: normalizedOld,
+                similarContent: similar.similarText,
+                lineNumber: similar.lineNumber,
+            })
+            
             let errorMsg = result.error || 'Replace failed'
             
-            if (result.error?.includes('not found')) {
-                const tip = hasCache
-                    ? 'The file may have been modified. Use read_file to get the latest content.'
-                    : 'Use read_file first to get the exact content.'
-                errorMsg = `old_string not found in file.\n\nTip: ${tip}`
-                
-                // 检查是否有相似内容
-                const normalizedOldTrimmed = normalizedOld.replace(/\s+/g, ' ').trim()
-                const normalizedContentTrimmed = normalizedContent.replace(/\s+/g, ' ')
-                if (normalizedContentTrimmed.includes(normalizedOldTrimmed)) {
-                    errorMsg += '\n\nNote: Similar content exists. The smart matcher tried multiple strategies but couldn\'t find a unique match.'
-                }
+            // 添加上下文信息
+            if (similar.found) {
+                errorMsg += `\n\n📍 Similar content found at line ${similar.lineNumber} (${Math.round((similar.similarity || 0) * 100)}% match)`
             }
+            
+            if (!hasCache) {
+                errorMsg += '\n\n⚠️ File was not read before editing. Always use read_file first.'
+            }
+            
+            errorMsg += `\n\n💡 Suggestion: ${suggestion}`
             
             return { success: false, result: '', error: errorMsg }
         }

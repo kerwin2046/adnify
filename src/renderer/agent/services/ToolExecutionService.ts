@@ -16,7 +16,7 @@ import { LLMToolCall } from '@/renderer/types/electron'
 import { truncateToolResult } from '@/renderer/utils/partialJson'
 import { isWriteTool } from '@/shared/config/tools'
 import { getAgentConfig } from '../utils/AgentConfig'
-import { compressToolResult } from '../utils/ContextCompressor'
+import { truncateToolResult as compressToolResult } from '../context/MessageTruncator'
 import { streamingEditService } from './streamingEditService'
 
 export interface ToolExecutionContext {

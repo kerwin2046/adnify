@@ -52,7 +52,7 @@ export { toolExecutionService } from './services/ToolExecutionService'
 
 // LLM 相关
 export { buildContextContent, buildUserContent, calculateContextStats } from './llm/ContextBuilder'
-export { buildLLMMessages, compressContext } from './llm/MessageBuilder'
+export { buildLLMMessages } from './llm/MessageBuilder'
 
 // 工具函数
 export { parseXMLToolCalls, parsePartialArgs, generateToolCallId } from './utils/XMLToolParser'

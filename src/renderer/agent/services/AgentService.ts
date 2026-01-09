@@ -19,7 +19,7 @@ import {
   TextContent,
 } from '../types'
 import { LLMStreamChunk, LLMToolCall, LLMResult } from '@/renderer/types/electron'
-import { getReadOnlyTools } from '@/shared/config/tools'
+import { getReadOnlyTools, isFileEditTool } from '@/shared/config/tools'
 
 // 导入拆分的模块
 import {
@@ -48,7 +48,8 @@ import {
 
 // 导入新的服务模块
 import { toolExecutionService } from './ToolExecutionService'
-import { buildLLMMessages, compressContext } from '../llm/MessageBuilder'
+import { buildLLMMessages } from '../llm/MessageBuilder'
+import { contextManager } from '../context'
 import { executeToolCallsIntelligently } from './ParallelToolExecutor'
 import { composerService } from './composerService'
 
@@ -290,8 +291,10 @@ class AgentServiceClass {
         )
       }
 
-      // 使用 MessageBuilder 的 compressContext
-      await compressContext(llmMessages, agentLoopConfig.contextCompressThreshold)
+      // 上下文优化（在循环中持续压缩）
+      const { messages: optimizedMessages } = contextManager.optimize(llmMessages)
+      llmMessages.length = 0
+      llmMessages.push(...optimizedMessages)
 
       const result = await this.callLLMWithRetry(config, llmMessages, chatMode)
 
@@ -654,7 +657,7 @@ class AgentServiceClass {
   ): Promise<{ hasErrors: boolean; errors: string[] }> {
     const errors: string[] = []
     const editedFiles = writeToolCalls
-      .filter(tc => ['edit_file', 'write_file', 'create_file_or_folder'].includes(tc.name))
+      .filter(tc => isFileEditTool(tc.name))
       .map(tc => {
         const filePath = tc.arguments.path as string
         return filePath.startsWith(workspacePath) ? filePath : `${workspacePath}/${filePath}`.replace(/\/+/g, '/')

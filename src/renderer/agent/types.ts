@@ -31,6 +31,7 @@ export type {
 
 export type { ToolCategory, ToolConfig } from '@/shared/config/tools'
 export type { AgentRuntimeConfig } from '@/shared/config/agentConfig'
+import { isFileEditTool } from '@/shared/config/tools'
 
 // ============================================
 // Agent 专用消息类型
@@ -355,7 +356,7 @@ export function getModifiedFilesFromMessages(messages: ChatMessage[]): string[] 
             for (const part of msg.parts) {
                 if (isToolCallPart(part)) {
                     const tc = part.toolCall
-                    if (['edit_file', 'write_file', 'create_file_or_folder'].includes(tc.name)) {
+                    if (isFileEditTool(tc.name)) {
                         const path = (tc.arguments.path || (tc.arguments._meta as any)?.filePath) as string
                         if (path) files.add(path)
                     }
