@@ -708,7 +708,7 @@ export class UnifiedProvider extends BaseProvider {
         }
       } else if (msg.role === 'tool') {
         history.push({
-          role: 'user',
+          role: 'function',
           parts: [
             {
               functionResponse: {
