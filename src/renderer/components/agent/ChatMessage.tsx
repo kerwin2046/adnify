@@ -324,7 +324,7 @@ const ChatMessage = React.memo(({
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState('')
   const [copied, setCopied] = useState(false)
-  const { editorConfig } = useStore()
+  const { editorConfig, language } = useStore()
   const fontSize = editorConfig.fontSize
 
   if (!isUserMessage(message) && !isAssistantMessage(message)) {
@@ -389,7 +389,7 @@ const ChatMessage = React.memo(({
               </button>
             )}
             {!isUser && onRegenerate && (
-              <MessageBranchActions messageId={message.id} onRegenerate={onRegenerate} />
+              <MessageBranchActions messageId={message.id} language={language} onRegenerate={onRegenerate} />
             )}
             {isUser && hasCheckpoint && onRestore && (
               <button onClick={() => onRestore(message.id)} className="p-1.5 text-text-muted hover:text-amber-400 rounded-md hover:bg-white/10 transition-colors" title="Restore Checkpoint">

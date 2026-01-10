@@ -341,7 +341,7 @@ export function MessageBranchActions({
       </Button>
 
       {showConfirm && (
-        <div className="absolute bottom-full left-0 mb-1 p-2 rounded-lg bg-surface border border-border shadow-xl z-50 min-w-[200px]">
+        <div className="absolute top-full right-0 mt-1 p-2 rounded-lg bg-surface border border-border shadow-xl z-50 min-w-[240px]">
           <p className="text-xs text-text-muted mb-2">
             {language === 'zh' 
               ? '这将创建一个新分支并重新生成回复' 
@@ -360,7 +360,7 @@ export function MessageBranchActions({
               variant="primary"
               size="sm"
               onClick={handleCreateBranch}
-              className="flex-1 h-6 text-xs"
+              className="flex-1 h-6 text-xs whitespace-nowrap"
             >
               <GitBranch className="w-3 h-3 mr-1" />
               {language === 'zh' ? '创建分支' : 'Create Branch'}
