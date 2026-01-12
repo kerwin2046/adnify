@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 讨论区 | Discussions
+    url: https://github.com/adnaan-worker/adnify/discussions
+    about: 提问、分享想法或与社区交流
+  - name: 📖 文档 | Documentation
+    url: https://github.com/adnaan-worker/adnify#readme
+    about: 查看项目文档和使用指南
+  - name: 💬 微信/QQ群
+    url: https://github.com/adnaan-worker/adnify#联系与交流
+    about: 加入微信群或QQ群实时交流
